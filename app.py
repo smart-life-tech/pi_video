@@ -55,6 +55,7 @@ test2 = True
 # === Main Loop ===
 try:
     play_boot_sound()
+    time.sleep(20)  # Wait for boot sound to finish
     print("System ready. Waiting for power switch ON...")
     while True:
         # Handle Shutdown Button
@@ -68,7 +69,7 @@ try:
         if GPIO.input(POWER_SWITCH_GPIO) == GPIO.LOW or test2:  # Force ON for testing
             print("System is ON. Waiting for video button press...")
             test2 = False
-            while GPIO.input(POWER_SWITCH_GPIO) == GPIO.HIGH:
+            while 1:
                 if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
                     print("Shutdown button pressed. Shutting down...")
                     time.sleep(2)
