@@ -30,26 +30,22 @@ def play_video(file_name):
         return
 
     print(f"Playing: {full_path}")
-    subprocess.call(["pkill", "-f", "omxplayer"])
-    subprocess.call([
-        "omxplayer",
-        "--no-osd",
-        "--aspect-mode", "fill",
-        "--display", "2",
-        full_path
+    subprocess.call(["pkill", "-f", "vlc"])  # Kill any existing VLC instances
+
+    subprocess.Popen([
+        "cvlc", "--fullscreen", "--no-osd", "--play-and-exit", full_path
     ])
+
 
 def play_boot_sound():
     if os.path.exists(BOOT_SOUND_FILE):
         print("Playing boot sound")
         subprocess.Popen([
-            "omxplayer",
-            "--no-osd",
-            "--display", "2",
-            BOOT_SOUND_FILE
+            "cvlc", "--play-and-exit", "--no-osd", BOOT_SOUND_FILE
         ])
     else:
         print("Boot sound file not found")
+
 test = True
 # === Main Loop ===
 try:
