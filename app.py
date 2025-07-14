@@ -30,21 +30,25 @@ def play_video(file_name):
         return
 
     print(f"Playing: {full_path}")
-    subprocess.call(["pkill", "-f", "vlc"])  # Kill any existing VLC instances
+    subprocess.call(["pkill", "-f", "vlc"])
 
     subprocess.Popen([
-        "cvlc", "--fullscreen", "--no-osd", "--play-and-exit", full_path
-    ])
-
+        "cvlc", "--fullscreen", "--no-osd", "--play-and-exit",
+        "--aout=alsa", "--alsa-audio-device=hw:0,0",
+        full_path
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def play_boot_sound():
     if os.path.exists(BOOT_SOUND_FILE):
         print("Playing boot sound")
         subprocess.Popen([
-            "cvlc", "--play-and-exit", "--no-osd", BOOT_SOUND_FILE
-        ])
+            "cvlc", "--play-and-exit", "--no-osd",
+            "--aout=alsa", "--alsa-audio-device=hw:0,0",
+            BOOT_SOUND_FILE
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         print("Boot sound file not found")
+
 
 test = True
 test2 = True
