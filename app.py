@@ -64,7 +64,7 @@ try:
         if GPIO.input(POWER_SWITCH_GPIO) == GPIO.LOW or test2:  # Force ON for testing
             print("System is ON. Waiting for video button press...")
             test2 = False
-            while GPIO.input(POWER_SWITCH_GPIO) == GPIO.LOW:
+            while GPIO.input(POWER_SWITCH_GPIO) == GPIO.HIGH:
                 if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
                     print("Shutdown button pressed. Shutting down...")
                     time.sleep(2)
