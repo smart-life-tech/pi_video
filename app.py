@@ -69,7 +69,7 @@ try:
                     if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
                         os.system("sudo shutdown -h now")
 
-                if GPIO.input(BUTTON_GPIO) == GPIO.LOW or test:  # Force ON for testing
+                if GPIO.input(BUTTON_GPIO) == GPIO.LOW :  # Force ON for testing
                     print("Video trigger pressed")
                     selected_video = random.choice(VIDEO_FILES)
                     print(f"Selected video: {selected_video}")
