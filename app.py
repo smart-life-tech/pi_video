@@ -8,13 +8,13 @@ import os
 BUTTON_GPIO = 17  # Video trigger button
 POWER_SWITCH_GPIO = 27  # On/Off switch
 SHUTDOWN_GPIO = 22  # Shutdown button
-VIDEO_FOLDER = "/home/pi/Videos"
+VIDEO_FOLDER = "/home/pi-five/pi_video"  # Folder containing video files
 VIDEO_FILES = [
     "video1.mp4",
     "video2.mp4",
     "video3.mp4"
 ]
-BOOT_SOUND_FILE = "/home/pi/boot_sound.mp3"  # Sound to play on boot
+BOOT_SOUND_FILE = "/home/pi-five/pi_video/boot_sound.mp3"  # Sound to play on boot
 
 # === Setup ===
 GPIO.setmode(GPIO.BCM)
