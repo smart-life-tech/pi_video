@@ -50,7 +50,7 @@ def play_boot_sound():
         ])
     else:
         print("Boot sound file not found")
-
+test = True
 # === Main Loop ===
 try:
     play_boot_sound()
@@ -64,7 +64,7 @@ try:
                 os.system("sudo shutdown -h now")
 
         # Handle Video Playback if System is ON
-        if GPIO.input(POWER_SWITCH_GPIO) == GPIO.LOW:
+        if GPIO.input(POWER_SWITCH_GPIO) == GPIO.LOW or 1:  # Force ON for testing
             print("System is ON. Waiting for video button press...")
             while GPIO.input(POWER_SWITCH_GPIO) == GPIO.LOW:
                 if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
@@ -73,9 +73,11 @@ try:
                     if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
                         os.system("sudo shutdown -h now")
 
-                if GPIO.input(BUTTON_GPIO) == GPIO.LOW:
+                if GPIO.input(BUTTON_GPIO) == GPIO.LOW or test:  # Force ON for testing
                     print("Video trigger pressed")
                     selected_video = random.choice(VIDEO_FILES)
+                    print(f"Selected video: {selected_video}")
+                    test = False
                     play_video(selected_video)
 
                     while GPIO.input(BUTTON_GPIO) == GPIO.LOW:
