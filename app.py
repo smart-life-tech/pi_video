@@ -29,16 +29,18 @@ def play_video(file_name):
         return
 
     print(f"Playing: {full_path}")
-    subprocess.call(["pkill", "-f", "vlc"])
     
-    # Small delay to ensure VLC is fully closed
-    time.sleep(0.2)
+    # Kill VLC more aggressively and wait
+    subprocess.call(["pkill", "-9", "-f", "vlc"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(0.1)
     
+    # Start video immediately with minimal interface
     subprocess.call([
         "cvlc", "--fullscreen", "--no-osd", "--play-and-exit",
         "--no-video-title-show", "--no-mouse-events", "--no-keyboard-events",
-        "--aout=alsa", "--alsa-audio-device=hw:1,0",  # HDMI audio
-        "--gain=1.0", "--volume=256",  # Boost volume
+        "--intf=dummy", "--no-video-deco", "--no-embedded-video",
+        "--aout=alsa", "--alsa-audio-device=hw:1,0",
+        "--gain=1.0", "--volume=256",
         full_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -47,7 +49,7 @@ def play_boot_sound():
         print("Playing boot sound")
         subprocess.Popen([
             "cvlc", "--play-and-exit", "--no-osd",
-            "--aout=alsa", "--alsa-audio-device=hw:1,0",  # HDMI audio
+            "--aout=alsa", "--alsa-audio-device=hw:1,0",
             "--gain=1.0", "--volume=256",
             BOOT_SOUND_FILE
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -60,7 +62,7 @@ def show_black_screen_loop():
         return subprocess.Popen([
             "cvlc", "--fullscreen", "--no-video-title-show", "--no-osd",
             "--loop", "--no-audio", "--no-mouse-events", "--no-keyboard-events",
-            "--intf=dummy",  # Use dummy interface to reduce flashing
+            "--intf=dummy", "--no-video-deco", "--no-embedded-video",
             BLACK_SCREEN_VIDEO
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
@@ -70,7 +72,7 @@ def show_black_screen_loop():
 # === Main Loop ===
 try:
     # Set audio to HDMI at startup
-    os.system("amixer cset numid=3 2")  # Force HDMI audio
+    os.system("amixer cset numid=3 2")
     
     play_boot_sound()
     black_process = show_black_screen_loop()
@@ -90,17 +92,19 @@ try:
             print("Video trigger pressed")
             video_playing = True
 
+            # Keep black screen running while we prepare the video
+            selected_video = random.choice(VIDEO_FILES)
+            print(f"Selected video: {selected_video}")
+            
+            # Only kill black screen right before starting video
             if black_process:
                 black_process.terminate()
                 black_process.wait()
-                time.sleep(0.1)  # Brief pause to prevent flashing
-
-            selected_video = random.choice(VIDEO_FILES)
-            print(f"Selected video: {selected_video}")
+            
+            # Start video immediately
             play_video(selected_video)
 
-            # Brief pause before restarting black screen
-            time.sleep(0.1)
+            # Restart black screen immediately after video ends
             black_process = show_black_screen_loop()
             video_playing = False
 
