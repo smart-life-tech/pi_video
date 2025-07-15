@@ -6,7 +6,7 @@ import os
 
 # === Configuration ===
 BUTTON_GPIO = 17  # Video trigger button
-SHUTDOWN_GPIO = 22  # Shutdown button
+SHUTDOWN_GPIO = 27  # Shutdown button
 VIDEO_FOLDER = "/home/pi-five/pi_video"  # Folder containing video files
 VIDEO_FILES = [
     "video1.mp4",
@@ -30,9 +30,15 @@ def play_video(file_name):
 
     print(f"Playing: {full_path}")
     subprocess.call(["pkill", "-f", "vlc"])
+    
+    # Small delay to ensure VLC is fully closed
+    time.sleep(0.2)
+    
     subprocess.call([
         "cvlc", "--fullscreen", "--no-osd", "--play-and-exit",
-        "--aout=alsa", "--alsa-audio-device=hw:0,0",
+        "--no-video-title-show", "--no-mouse-events", "--no-keyboard-events",
+        "--aout=alsa", "--alsa-audio-device=hw:1,0",  # HDMI audio
+        "--gain=1.0", "--volume=256",  # Boost volume
         full_path
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -41,7 +47,8 @@ def play_boot_sound():
         print("Playing boot sound")
         subprocess.Popen([
             "cvlc", "--play-and-exit", "--no-osd",
-            "--aout=alsa", "--alsa-audio-device=hw:0,0",
+            "--aout=alsa", "--alsa-audio-device=hw:1,0",  # HDMI audio
+            "--gain=1.0", "--volume=256",
             BOOT_SOUND_FILE
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
@@ -52,7 +59,9 @@ def show_black_screen_loop():
         print("Starting black screen loop")
         return subprocess.Popen([
             "cvlc", "--fullscreen", "--no-video-title-show", "--no-osd",
-            "--loop", "--no-audio", BLACK_SCREEN_VIDEO
+            "--loop", "--no-audio", "--no-mouse-events", "--no-keyboard-events",
+            "--intf=dummy",  # Use dummy interface to reduce flashing
+            BLACK_SCREEN_VIDEO
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         print("Black screen video not found")
@@ -60,6 +69,9 @@ def show_black_screen_loop():
 
 # === Main Loop ===
 try:
+    # Set audio to HDMI at startup
+    os.system("amixer cset numid=3 2")  # Force HDMI audio
+    
     play_boot_sound()
     black_process = show_black_screen_loop()
     print("System ready. Waiting for video button press...")
@@ -81,11 +93,14 @@ try:
             if black_process:
                 black_process.terminate()
                 black_process.wait()
+                time.sleep(0.1)  # Brief pause to prevent flashing
 
             selected_video = random.choice(VIDEO_FILES)
             print(f"Selected video: {selected_video}")
             play_video(selected_video)
 
+            # Brief pause before restarting black screen
+            time.sleep(0.1)
             black_process = show_black_screen_loop()
             video_playing = False
 
