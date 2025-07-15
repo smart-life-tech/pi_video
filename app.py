@@ -6,15 +6,18 @@ import os
 
 # === Configuration ===
 BUTTON_GPIO = 17  # Video trigger button
-SHUTDOWN_GPIO = 22  # Shutdown button
+SHUTDOWN_GPIO = 27  # Shutdown button
 VIDEO_FOLDER = "/home/pi-five/pi_video"  # Folder containing video files
-VIDEO_FILES = [
-    "video1.mp4",
-    "video2.mp4",
-    "video3.mp4"
-]
-BOOT_SOUND_FILE = "/home/pi-five/pi_video/boot_sound.mp3"  # Sound to play on boot
+MERGED_VIDEO = "/home/pi-five/pi_video/merged_videos.mp4"  # Single merged video
+BOOT_SOUND_FILE = "/home/pi-five/pi_video/boot_sound.wav"  # Sound to play on boot
 BLACK_SCREEN_VIDEO = "/home/pi-five/pi_video/black.mp4"  # Black screen video file
+
+# Video segments from video_timings.txt
+VIDEO_SEGMENTS = [
+    {"name": "video1", "start": 0, "duration": 45.9},
+    {"name": "video2", "start": 45.9, "duration": 42.2},
+    {"name": "video3", "start": 88.0, "duration": 22.9},
+]
 
 # === Setup ===
 GPIO.setmode(GPIO.BCM)
@@ -22,18 +25,36 @@ GPIO.setup(BUTTON_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(SHUTDOWN_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # === Utility Functions ===
-def play_video(file_name):
-    full_path = os.path.join(VIDEO_FOLDER, file_name)
-    if not os.path.exists(full_path):
-        print(f"Video file not found: {full_path}")
+def play_video_segment(segment_name):
+    """Play a specific segment from the merged video"""
+    if not os.path.exists(MERGED_VIDEO):
+        print(f"Merged video not found: {MERGED_VIDEO}")
         return
 
-    print(f"Playing: {full_path}")
+    # Find the segment
+    segment = None
+    for seg in VIDEO_SEGMENTS:
+        if seg["name"] == segment_name:
+            segment = seg
+            break
+    
+    if not segment:
+        print(f"Segment not found: {segment_name}")
+        return
+    
+    start_time = segment["start"]
+    duration = segment["duration"]
+    stop_time = start_time + duration
+    
+    print(f"Playing: {segment_name} from {start_time}s for {duration}s")
     subprocess.call(["pkill", "-f", "vlc"])
+    
     subprocess.call([
         "cvlc", "--fullscreen", "--no-osd", "--play-and-exit",
         "--aout=alsa", "--alsa-audio-device=hw:0,0",
-        full_path
+        f"--start-time={start_time}",
+        f"--stop-time={stop_time}",
+        MERGED_VIDEO
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def play_boot_sound():
@@ -47,19 +68,21 @@ def play_boot_sound():
     else:
         print("Boot sound file not found")
 
-def show_black_screen():
+def show_black_screen_loop():
     if os.path.exists(BLACK_SCREEN_VIDEO):
-        subprocess.call([
-            "cvlc", "--video-title=", "--fullscreen", "--no-video-title-show",
-            "--play-and-exit", "--no-audio", BLACK_SCREEN_VIDEO
+        print("Starting black screen loop")
+        return subprocess.Popen([
+            "cvlc", "--fullscreen", "--no-video-title-show", "--no-osd",
+            "--loop", "--no-audio", BLACK_SCREEN_VIDEO
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         print("Black screen video not found")
+        return None
 
 # === Main Loop ===
 try:
     play_boot_sound()
-    show_black_screen()
+    black_process = show_black_screen_loop()
     print("System ready. Waiting for video button press...")
     video_playing = False
 
@@ -75,10 +98,20 @@ try:
         if GPIO.input(BUTTON_GPIO) == GPIO.LOW and not video_playing:
             print("Video trigger pressed")
             video_playing = True
-            selected_video = random.choice(VIDEO_FILES)
-            print(f"Selected video: {selected_video}")
-            play_video(selected_video)
-            show_black_screen()
+
+            if black_process:
+                black_process.terminate()
+                black_process.wait()
+
+            # Randomly select a video segment
+            segment_index = random.randint(0, len(VIDEO_SEGMENTS) - 1)
+            selected_segment = VIDEO_SEGMENTS[segment_index]
+            print(f"Selected: {selected_segment['name']}")
+            
+            # Play the selected segment
+            play_video_segment(selected_segment['name'])
+
+            black_process = show_black_screen_loop()
             video_playing = False
 
             while GPIO.input(BUTTON_GPIO) == GPIO.LOW:
