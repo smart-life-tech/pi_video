@@ -47,19 +47,21 @@ def play_boot_sound():
     else:
         print("Boot sound file not found")
 
-def show_black_screen():
+def show_black_screen_loop():
     if os.path.exists(BLACK_SCREEN_VIDEO):
-        subprocess.call([
-            "cvlc", "--video-title=", "--fullscreen", "--no-video-title-show",
-            "--play-and-exit", "--no-audio", BLACK_SCREEN_VIDEO
+        print("Starting black screen loop")
+        return subprocess.Popen([
+            "cvlc", "--fullscreen", "--no-video-title-show", "--no-osd",
+            "--loop", "--no-audio", BLACK_SCREEN_VIDEO
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
         print("Black screen video not found")
+        return None
 
 # === Main Loop ===
 try:
     play_boot_sound()
-    show_black_screen()
+    black_process = show_black_screen_loop()
     print("System ready. Waiting for video button press...")
     video_playing = False
 
@@ -75,10 +77,16 @@ try:
         if GPIO.input(BUTTON_GPIO) == GPIO.LOW and not video_playing:
             print("Video trigger pressed")
             video_playing = True
+
+            if black_process:
+                black_process.terminate()
+                black_process.wait()
+
             selected_video = random.choice(VIDEO_FILES)
             print(f"Selected video: {selected_video}")
             play_video(selected_video)
-            show_black_screen()
+
+            black_process = show_black_screen_loop()
             video_playing = False
 
             while GPIO.input(BUTTON_GPIO) == GPIO.LOW:
