@@ -34,19 +34,19 @@ def test_hdmi_audio():
     print("Testing HDMI audio ports...")
     
     try:
-        result = subprocess.run(["speaker-test", "-c", "2", "-D", "hw:0,0", "-t", "sine", "-l", "1"], 
+        result = subprocess.run(["speaker-test", "-c", "2", "-D", "hw:1,0", "-t", "sine", "-l", "1"], 
                               capture_output=True, timeout=3)
         if result.returncode == 0:
-            print("HDMI audio working on hw:0,0")
+            print("HDMI audio working on hw:1,0")
             return "hw:0,0"
     except:
         pass
     
     try:
-        result = subprocess.run(["speaker-test", "-c", "2", "-D", "hw:1,0", "-t", "sine", "-l", "1"], 
+        result = subprocess.run(["speaker-test", "-c", "2", "-D", "hw:0,0", "-t", "sine", "-l", "1"], 
                               capture_output=True, timeout=3)
         if result.returncode == 0:
-            print("HDMI audio working on hw:1,0")
+            print("HDMI audio working on hw:0,0")
             return "hw:1,0"
     except:
         pass
@@ -161,7 +161,7 @@ def setup_system():
 
 def update_video_timings():
     """Helper function to calculate video segment timings"""
-    print("=== UPDATE THESE TIMINGS IN THE CODE ===")
+    #print("=== UPDATE THESE TIMINGS IN THE CODE ===")
     total_duration = 0
     
     for i, video_file in enumerate(["video1.mp4", "video2.mp4", "video3.mp4"]):
