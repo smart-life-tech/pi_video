@@ -13,7 +13,7 @@ VIDEO_FILES = [
     "video2.mp4",
     "video3.mp4"
 ]
-BOOT_SOUND_FILE = "/home/pi-five/pi_video/boot_sound.mp3"  # Sound to play on boot
+BOOT_SOUND_FILE = "/home/pi-five/pi_video/boot_sound.wav"  # Sound to play on boot
 BLACK_SCREEN_VIDEO = "/home/pi-five/pi_video/black.mp4"  # Black screen video file
 
 # === Setup ===
