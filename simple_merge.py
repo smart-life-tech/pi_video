@@ -2,7 +2,7 @@ import subprocess
 import os
 
 # === Configuration ===
-VIDEO_FOLDER = "/home/pi-five/pi_video"
+VIDEO_FOLDER = "c:/Users/USER/Documents/raspberrypi/pi_video/"
 VIDEO_FILES = [
     "video1.mp4",
     "video2.mp4", 
@@ -67,7 +67,7 @@ def simple_merge():
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print(f"✅ Simple merge successful!")
+        print(f"SUCCESS: Simple merge successful!")
         
         # Clean up
         os.remove("filelist.txt")
@@ -96,7 +96,7 @@ def reencode_merge():
     
     try:
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        print(f"✅ Re-encode merge successful!")
+        print(f"SUCCESS: Re-encode merge successful!")
         
         # Clean up
         if os.path.exists("filelist.txt"):
@@ -104,7 +104,7 @@ def reencode_merge():
         return True
         
     except subprocess.CalledProcessError as e:
-        print(f"❌ Re-encode merge failed: {e}")
+        print(f"ERROR: Re-encode merge failed: {e}")
         print(f"Stderr: {e.stderr}")
         return False
 
@@ -113,22 +113,21 @@ def verify_and_get_timings():
     merged_path = os.path.join(VIDEO_FOLDER, MERGED_VIDEO)
     
     if not os.path.exists(merged_path):
-        print("❌ Merged video not found")
+        print("ERROR: Merged video not found")
         return
     
     # Check merged video
     info = get_video_info(merged_path)
     if info:
         file_size = os.path.getsize(merged_path) / (1024*1024)
-        print(f"\n✅ Merged video: {info['resolution']} - {info['duration']:.1f}s - {file_size:.1f}MB")
+        print(f"\nSUCCESS: Merged video: {info['resolution']} - {info['duration']:.1f}s - {file_size:.1f}MB")
         
         # Generate timings from original videos
         segments = []
         current_start = 0
         
         for i, video_file in enumerate(VIDEO_FILES):
-            video_path = os.path.join(VIDEO_FOLDER, video_file)
-            orig_info = get_video_info(video_path)
+            orig_info = get_video_info(video_file)
             
             if orig_info:
                 segment = {
@@ -158,9 +157,9 @@ def verify_and_get_timings():
                     f.write(f'    {{"name": "{segment["name"]}", "start": {segment["start"]}, "duration": {segment["duration"]}}},\n')
                 f.write("]\n")
             
-            print("✅ Timings saved to video_timings.txt")
+            print("SUCCESS: Timings saved to video_timings.txt")
     else:
-        print("❌ Could not verify merged video")
+        print("ERROR: Could not verify merged video")
 
 def main():
     print("Simple Video Merger")
@@ -169,7 +168,7 @@ def main():
     if simple_merge():
         verify_and_get_timings()
     else:
-        print("❌ Merge failed")
+        print("ERROR: Merge failed")
 
 if __name__ == "__main__":
     main()
