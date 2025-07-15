@@ -1,4 +1,4 @@
-from moviepy  import VideoFileClip, concatenate_videoclips
+from moviepy import VideoFileClip, concatenate_videoclips, ColorClip, CompositeVideoClip
 import os
 
 # === Configuration ===
@@ -39,12 +39,11 @@ def resize_clip(clip, target_size):
     new_w = int(clip.w * scale)
     new_h = int(clip.h * scale)
     
-    resized_clip = clip.resize((new_w, new_h))
+    # Use the correct resize method
+    resized_clip = clip.resize(newsize=(new_w, new_h))
     
     # Add padding if needed
     if new_w != target_w or new_h != target_h:
-        from moviepy import ColorClip, CompositeVideoClip
-        
         # Create black background
         background = ColorClip(size=target_size, color=(0, 0, 0), duration=clip.duration)
         
@@ -115,7 +114,7 @@ def merge_videos():
             continue
     
     if not clips:
-        print("❌ No valid clips to merge")
+        print("ERROR: No valid clips to merge")
         return None
     
     # Concatenate all clips
@@ -131,7 +130,9 @@ def merge_videos():
             audio_codec='aac',
             temp_audiofile='temp-audio.m4a',
             remove_temp=True,
-            fps=24  # Standard fps
+            fps=24,  # Standard fps
+            verbose=False,  # Reduce output
+            logger=None  # Disable progress bar if causing issues
         )
         
         # Clean up
@@ -139,11 +140,11 @@ def merge_videos():
         for clip in clips:
             clip.close()
         
-        print("✅ Merge completed successfully!")
+        print("SUCCESS: Merge completed successfully!")
         return segments
         
     except Exception as e:
-        print(f"❌ Error during merge: {e}")
+        print(f"ERROR: Error during merge: {e}")
         return None
 
 def verify_and_generate_code(segments):
@@ -151,14 +152,14 @@ def verify_and_generate_code(segments):
     merged_path = os.path.join(VIDEO_FOLDER, MERGED_VIDEO)
     
     if not os.path.exists(merged_path):
-        print("❌ Merged video not found")
+        print("ERROR: Merged video not found")
         return
     
     # Check merged video
     info = get_video_info(merged_path)
     if info:
         file_size = os.path.getsize(merged_path) / (1024*1024)
-        print(f"\n✅ Merged video: {info['resolution']} - {info['duration']:.1f}s - {file_size:.1f}MB")
+        print(f"\nSUCCESS: Merged video: {info['resolution']} - {info['duration']:.1f}s - {file_size:.1f}MB")
         
         if segments:
             print("\n" + "="*60)
@@ -188,9 +189,9 @@ def verify_and_generate_code(segments):
                 for segment in segments:
                     f.write(f"# {segment['name']}: {segment['original_resolution']}\n")
             
-            print("✅ Timings saved to video_timings.txt")
+            print("SUCCESS: Timings saved to video_timings.txt")
     else:
-        print("❌ Could not verify merged video")
+        print("ERROR: Could not verify merged video")
 
 def main():
     print("MoviePy Video Merger")
@@ -203,11 +204,11 @@ def main():
         if segments:
             verify_and_generate_code(segments)
         else:
-            print("❌ Merge failed")
+            print("ERROR: Merge failed")
     except KeyboardInterrupt:
-        print("\n❌ Merge interrupted by user")
+        print("\nERROR: Merge interrupted by user")
     except Exception as e:
-        print(f"❌ Unexpected error: {e}")
+        print(f"ERROR: Unexpected error: {e}")
 
 if __name__ == "__main__":
     main()
