@@ -6,7 +6,6 @@ import os
 
 # === Configuration ===
 BUTTON_GPIO = 17  # Video trigger button
-POWER_SWITCH_GPIO = 27  # On/Off switch
 SHUTDOWN_GPIO = 22  # Shutdown button
 VIDEO_FOLDER = "/home/pi-five/pi_video"  # Folder containing video files
 VIDEO_FILES = [
@@ -15,11 +14,11 @@ VIDEO_FILES = [
     "video3.mp4"
 ]
 BOOT_SOUND_FILE = "/home/pi-five/pi_video/boot_sound.mp3"  # Sound to play on boot
+BLACK_SCREEN_VIDEO = "/home/pi-five/pi_video/black.mp4"  # Black screen video file
 
 # === Setup ===
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(BUTTON_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(POWER_SWITCH_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(SHUTDOWN_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # === Utility Functions ===
@@ -31,8 +30,7 @@ def play_video(file_name):
 
     print(f"Playing: {full_path}")
     subprocess.call(["pkill", "-f", "vlc"])
-
-    subprocess.Popen([
+    subprocess.call([
         "cvlc", "--fullscreen", "--no-osd", "--play-and-exit",
         "--aout=alsa", "--alsa-audio-device=hw:0,0",
         full_path
@@ -49,14 +47,22 @@ def play_boot_sound():
     else:
         print("Boot sound file not found")
 
+def show_black_screen():
+    if os.path.exists(BLACK_SCREEN_VIDEO):
+        subprocess.call([
+            "cvlc", "--video-title=", "--fullscreen", "--no-video-title-show",
+            "--play-and-exit", "--no-audio", BLACK_SCREEN_VIDEO
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    else:
+        print("Black screen video not found")
 
-test = True
-test2 = True
 # === Main Loop ===
 try:
     play_boot_sound()
-    time.sleep(20)  # Wait for boot sound to finish
-    print("System ready. Waiting for power switch ON...")
+    show_black_screen()
+    print("System ready. Waiting for video button press...")
+    video_playing = False
+
     while True:
         # Handle Shutdown Button
         if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
@@ -65,34 +71,25 @@ try:
             if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
                 os.system("sudo shutdown -h now")
 
-        # Handle Video Playback if System is ON
-        if GPIO.input(POWER_SWITCH_GPIO) == GPIO.LOW or test2:  # Force ON for testing
-            print("System is ON. Waiting for video button press...")
-            test2 = False
-            while 1:
-                if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
-                    print("Shutdown button pressed. Shutting down...")
-                    time.sleep(2)
-                    if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
-                        os.system("sudo shutdown -h now")
+        # Handle Video Button
+        if GPIO.input(BUTTON_GPIO) == GPIO.LOW and not video_playing:
+            print("Video trigger pressed")
+            video_playing = True
+            selected_video = random.choice(VIDEO_FILES)
+            print(f"Selected video: {selected_video}")
+            play_video(selected_video)
+            show_black_screen()
+            video_playing = False
 
-                if GPIO.input(BUTTON_GPIO) == GPIO.LOW :  # Force ON for testing
-                    print("Video trigger pressed")
-                    selected_video = random.choice(VIDEO_FILES)
-                    print(f"Selected video: {selected_video}")
-                    test = False
-                    play_video(selected_video)
+            while GPIO.input(BUTTON_GPIO) == GPIO.LOW:
+                time.sleep(0.1)
+            time.sleep(0.3)
 
-                    while GPIO.input(BUTTON_GPIO) == GPIO.LOW:
-                        time.sleep(0.1)
-                    time.sleep(0.3)
-                time.sleep(0.05)
-
-            print("System turned OFF. Waiting...")
-        time.sleep(0.2)
+        time.sleep(0.1)
 
 except KeyboardInterrupt:
     print("Exiting program...")
 
 finally:
     GPIO.cleanup()
+    print("Cleaning up GPIO...")
