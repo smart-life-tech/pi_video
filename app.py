@@ -14,9 +14,9 @@ BOOT_SOUND_FILE = "/home/pi-five/pi_video/boot_sound.wav"
 
 # Video segments timing (in seconds) - UPDATE THESE AFTER GETTING DURATIONS
 VIDEO_SEGMENTS = [
-    {"name": "video1", "start": 0, "duration": 30},      # Replace with actual duration
-    {"name": "video2", "start": 30, "duration": 25},     # Replace with actual duration  
-    {"name": "video3", "start": 55, "duration": 40}      # Replace with actual duration
+    {"name": "video1", "start": 0, "duration": 59},      # Replace with actual duration
+    {"name": "video2", "start": 59, "duration": 42},     # Replace with actual duration  
+    {"name": "video3", "start": 101, "duration": 22}      # Replace with actual duration
 ]
 
 # === Setup ===

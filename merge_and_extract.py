@@ -10,7 +10,8 @@ VIDEO_FILES = [
     "video3.mp4"
 ]
 MERGED_VIDEO = "merged_videos.mp4"
-TARGET_RESOLUTION = "1920x1080"  # Target resolution for all videos
+TARGET_WIDTH = 1920
+TARGET_HEIGHT = 1080
 
 def get_video_info(video_path):
     """Get video information including duration and resolution"""
@@ -70,12 +71,15 @@ def merge_videos():
     for video_file in VIDEO_FILES:
         input_args.extend(["-i", video_file])
     
-    # Create filter complex with scaling and concatenation
+    # Create filter complex with proper scaling and padding
     filter_parts = []
     
-    # Scale each video to target resolution
+    # Scale and pad each video to target resolution
     for i in range(len(VIDEO_FILES)):
-        filter_parts.append(f"[{i}:v]scale={TARGET_RESOLUTION}:force_original_aspect_ratio=decrease,pad={TARGET_RESOLUTION}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}]")
+        filter_parts.append(
+            f"[{i}:v]scale={TARGET_WIDTH}:{TARGET_HEIGHT}:force_original_aspect_ratio=decrease,"
+            f"pad={TARGET_WIDTH}:{TARGET_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[v{i}]"
+        )
     
     # Concatenate scaled videos
     concat_inputs = ""
@@ -91,14 +95,18 @@ def merge_videos():
         "-filter_complex", filter_complex,
         "-map", "[outv]", "-map", "[outa]",
         "-c:v", "libx264", "-c:a", "aac",
-        "-preset", "medium",  # Balance between speed and quality
-        "-crf", "23",  # Good quality
+        "-preset", "medium",
+        "-crf", "23",
         MERGED_VIDEO
     ]
     
     try:
-        print(f"Scaling all videos to {TARGET_RESOLUTION} and merging...")
+        print(f"Scaling all videos to {TARGET_WIDTH}x{TARGET_HEIGHT} and merging...")
         print("This may take a few minutes...")
+        
+        # Print the command for debugging
+        print("FFmpeg command:")
+        print(" ".join(ffmpeg_cmd))
         
         result = subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True)
         print(f"Successfully merged videos into {MERGED_VIDEO}")
@@ -131,7 +139,7 @@ def extract_timings():
             segments.append(segment)
             current_start += info["duration"]
             
-            print(f"{video_file}: {info['resolution']} -> {TARGET_RESOLUTION}, Duration = {info['duration']:.1f}s")
+            print(f"{video_file}: {info['resolution']} -> {TARGET_WIDTH}x{TARGET_HEIGHT}, Duration = {info['duration']:.1f}s")
         else:
             print(f"Could not get info for {video_file}")
     
@@ -149,7 +157,7 @@ def generate_updated_code(segments):
         print(f'    {{"name": "{segment["name"]}", "start": {segment["start"]}, "duration": {segment["duration"]}}},')
     print("]")
     
-    print(f"\n# All videos scaled to: {TARGET_RESOLUTION}")
+    print(f"\n# All videos scaled to: {TARGET_WIDTH}x{TARGET_HEIGHT}")
     print("# Original resolutions:")
     for segment in segments:
         print(f"# {segment['name']}: {segment['original_resolution']}")
@@ -162,7 +170,7 @@ def generate_updated_code(segments):
         for segment in segments:
             f.write(f'    {{"name": "{segment["name"]}", "start": {segment["start"]}, "duration": {segment["duration"]}}},\n')
         f.write("]\n\n")
-        f.write(f"# All videos scaled to: {TARGET_RESOLUTION}\n")
+        f.write(f"# All videos scaled to: {TARGET_WIDTH}x{TARGET_HEIGHT}\n")
         f.write("# Original resolutions:\n")
         for segment in segments:
             f.write(f"# {segment['name']}: {segment['original_resolution']}\n")
@@ -196,7 +204,7 @@ def verify_merged_video():
 def main():
     print("Video Merger and Timing Extractor")
     print("=" * 50)
-    print(f"Target resolution: {TARGET_RESOLUTION}")
+    print(f"Target resolution: {TARGET_WIDTH}x{TARGET_HEIGHT}")
     print("=" * 50)
     
     # Check if ffmpeg and ffprobe are available
