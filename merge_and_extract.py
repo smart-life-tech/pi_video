@@ -10,48 +10,79 @@ VIDEO_FILES = [
     "video3.mp4"
 ]
 MERGED_VIDEO = "merged_videos.mp4"
+TARGET_RESOLUTION = "1920x1080"  # Target resolution for all videos
 
-def get_video_duration(video_path):
-    """Get duration of a video file in seconds"""
+def get_video_info(video_path):
+    """Get video information including duration and resolution"""
     try:
-        result = subprocess.run([
+        # Get duration
+        duration_result = subprocess.run([
             "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
             "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ], capture_output=True, text=True, check=True)
         
-        duration = float(result.stdout.strip())
-        return duration
+        # Get resolution
+        resolution_result = subprocess.run([
+            "ffprobe", "-v", "quiet", "-select_streams", "v:0", 
+            "-show_entries", "stream=width,height",
+            "-of", "csv=s=x:p=0", video_path
+        ], capture_output=True, text=True, check=True)
+        
+        duration = float(duration_result.stdout.strip())
+        resolution = resolution_result.stdout.strip()
+        
+        return {
+            "duration": duration,
+            "resolution": resolution
+        }
     except Exception as e:
-        print(f"Error getting duration for {video_path}: {e}")
-        return 0
+        print(f"Error getting info for {video_path}: {e}")
+        return None
 
 def merge_videos():
-    """Merge all videos into one file"""
-    print("Merging videos...")
+    """Merge all videos into one file with consistent resolution"""
+    print("Merging videos with resolution scaling...")
     
     # Change to video directory
     os.chdir(VIDEO_FOLDER)
     
-    # Check if all video files exist
-    missing_files = []
+    # Check if all video files exist and get their info
+    video_info = []
     for video_file in VIDEO_FILES:
         if not os.path.exists(video_file):
-            missing_files.append(video_file)
+            print(f"Missing video file: {video_file}")
+            return False
+        
+        info = get_video_info(video_file)
+        if info is None:
+            return False
+        
+        video_info.append({
+            "file": video_file,
+            "duration": info["duration"],
+            "resolution": info["resolution"]
+        })
+        
+        print(f"{video_file}: {info['resolution']} - {info['duration']:.1f}s")
     
-    if missing_files:
-        print(f"Missing video files: {missing_files}")
-        return False
-    
-    # Build ffmpeg command for merging
+    # Build ffmpeg command with scaling
     input_args = []
     for video_file in VIDEO_FILES:
         input_args.extend(["-i", video_file])
     
-    # Create filter complex for concatenation
-    filter_complex = ""
+    # Create filter complex with scaling and concatenation
+    filter_parts = []
+    
+    # Scale each video to target resolution
     for i in range(len(VIDEO_FILES)):
-        filter_complex += f"[{i}:v][{i}:a]"
-    filter_complex += f"concat=n={len(VIDEO_FILES)}:v=1:a=1[outv][outa]"
+        filter_parts.append(f"[{i}:v]scale={TARGET_RESOLUTION}:force_original_aspect_ratio=decrease,pad={TARGET_RESOLUTION}:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}]")
+    
+    # Concatenate scaled videos
+    concat_inputs = ""
+    for i in range(len(VIDEO_FILES)):
+        concat_inputs += f"[v{i}][{i}:a]"
+    
+    filter_complex = ";".join(filter_parts) + f";{concat_inputs}concat=n={len(VIDEO_FILES)}:v=1:a=1[outv][outa]"
     
     # Full ffmpeg command
     ffmpeg_cmd = [
@@ -59,18 +90,23 @@ def merge_videos():
     ] + input_args + [
         "-filter_complex", filter_complex,
         "-map", "[outv]", "-map", "[outa]",
-        "-c:v", "libx264", "-c:a", "aac",  # Ensure compatible codecs
+        "-c:v", "libx264", "-c:a", "aac",
+        "-preset", "medium",  # Balance between speed and quality
+        "-crf", "23",  # Good quality
         MERGED_VIDEO
     ]
     
     try:
-        print("Running ffmpeg merge command...")
+        print(f"Scaling all videos to {TARGET_RESOLUTION} and merging...")
+        print("This may take a few minutes...")
+        
         result = subprocess.run(ffmpeg_cmd, check=True, capture_output=True, text=True)
         print(f"Successfully merged videos into {MERGED_VIDEO}")
         return True
     except subprocess.CalledProcessError as e:
         print(f"Error merging videos: {e}")
-        print(f"FFmpeg stderr: {e.stderr}")
+        if e.stderr:
+            print(f"FFmpeg stderr: {e.stderr}")
         return False
 
 def extract_timings():
@@ -82,29 +118,30 @@ def extract_timings():
     
     for i, video_file in enumerate(VIDEO_FILES):
         video_path = os.path.join(VIDEO_FOLDER, video_file)
-        duration = get_video_duration(video_path)
+        info = get_video_info(video_path)
         
-        if duration > 0:
+        if info and info["duration"] > 0:
             segment = {
                 "name": f"video{i+1}",
                 "start": round(current_start, 1),
-                "duration": round(duration, 1),
-                "end": round(current_start + duration, 1)
+                "duration": round(info["duration"], 1),
+                "end": round(current_start + info["duration"], 1),
+                "original_resolution": info["resolution"]
             }
             segments.append(segment)
-            current_start += duration
+            current_start += info["duration"]
             
-            print(f"{video_file}: Duration = {duration:.1f}s")
+            print(f"{video_file}: {info['resolution']} -> {TARGET_RESOLUTION}, Duration = {info['duration']:.1f}s")
         else:
-            print(f"Could not get duration for {video_file}")
+            print(f"Could not get info for {video_file}")
     
     return segments
 
 def generate_updated_code(segments):
     """Generate the updated Python code with correct timings"""
-    print("\n" + "="*50)
+    print("\n" + "="*60)
     print("COPY THIS INTO YOUR app.py FILE:")
-    print("="*50)
+    print("="*60)
     
     print("# Updated VIDEO_SEGMENTS with correct timings:")
     print("VIDEO_SEGMENTS = [")
@@ -112,14 +149,23 @@ def generate_updated_code(segments):
         print(f'    {{"name": "{segment["name"]}", "start": {segment["start"]}, "duration": {segment["duration"]}}},')
     print("]")
     
-    print("\n" + "="*50)
+    print(f"\n# All videos scaled to: {TARGET_RESOLUTION}")
+    print("# Original resolutions:")
+    for segment in segments:
+        print(f"# {segment['name']}: {segment['original_resolution']}")
+    
+    print("\n" + "="*60)
     
     # Also save to a file
     with open(os.path.join(VIDEO_FOLDER, "video_timings.txt"), "w") as f:
         f.write("VIDEO_SEGMENTS = [\n")
         for segment in segments:
             f.write(f'    {{"name": "{segment["name"]}", "start": {segment["start"]}, "duration": {segment["duration"]}}},\n')
-        f.write("]\n")
+        f.write("]\n\n")
+        f.write(f"# All videos scaled to: {TARGET_RESOLUTION}\n")
+        f.write("# Original resolutions:\n")
+        for segment in segments:
+            f.write(f"# {segment['name']}: {segment['original_resolution']}\n")
     
     print(f"Timings also saved to: {VIDEO_FOLDER}/video_timings.txt")
 
@@ -131,19 +177,27 @@ def verify_merged_video():
         print(f"Error: Merged video not found at {merged_path}")
         return False
     
-    # Get duration of merged video
-    merged_duration = get_video_duration(merged_path)
-    print(f"\nMerged video duration: {merged_duration:.1f} seconds")
-    
-    # Get file size
-    file_size = os.path.getsize(merged_path)
-    print(f"Merged video size: {file_size / (1024*1024):.1f} MB")
-    
-    return True
+    # Get info about merged video
+    info = get_video_info(merged_path)
+    if info:
+        print(f"\nMerged video:")
+        print(f"  Resolution: {info['resolution']}")
+        print(f"  Duration: {info['duration']:.1f} seconds")
+        
+        # Get file size
+        file_size = os.path.getsize(merged_path)
+        print(f"  Size: {file_size / (1024*1024):.1f} MB")
+        
+        return True
+    else:
+        print("Error getting merged video info")
+        return False
 
 def main():
     print("Video Merger and Timing Extractor")
-    print("=" * 40)
+    print("=" * 50)
+    print(f"Target resolution: {TARGET_RESOLUTION}")
+    print("=" * 50)
     
     # Check if ffmpeg and ffprobe are available
     try:
@@ -161,7 +215,7 @@ def main():
         print("No valid video segments found. Exiting.")
         return
     
-    # Step 2: Merge videos
+    # Step 2: Merge videos with scaling
     if merge_videos():
         # Step 3: Verify merged video
         if verify_merged_video():
@@ -169,6 +223,7 @@ def main():
             generate_updated_code(segments)
             
             print(f"\n✅ Success! Merged video created: {VIDEO_FOLDER}/{MERGED_VIDEO}")
+            print("✅ All videos scaled to consistent resolution")
             print("✅ Copy the VIDEO_SEGMENTS code above into your app.py file")
         else:
             print("❌ Error verifying merged video")
