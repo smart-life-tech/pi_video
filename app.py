@@ -188,13 +188,13 @@ def switch_to_random_video():
         return
     
     # Stop black screen
-    if black_screen_process:
-        try:
-            black_screen_process.terminate()
-            black_screen_process.wait(timeout=1)
-        except:
-            black_screen_process.kill()
-        black_screen_process = None
+    # if black_screen_process:
+    #     try:
+    #         black_screen_process.terminate()
+    #         black_screen_process.wait(timeout=1)
+    #     except:
+    #         black_screen_process.kill()
+    #     black_screen_process = None
     
     # Select random video (avoid repeating same video)
     available_videos = VIDEO_SEGMENTS.copy()
@@ -219,14 +219,14 @@ def return_to_idle():
     
     print("Video finished")
     
-    # Stop current video
-    if current_video_process:
-        try:
-            current_video_process.terminate()
-            current_video_process.wait(timeout=1)
-        except:
-            current_video_process.kill()
-        current_video_process = None
+    # # Stop current video
+    # if current_video_process:
+    #     try:
+    #         current_video_process.terminate()
+    #         current_video_process.wait(timeout=1)
+    #     except:
+    #         current_video_process.kill()
+    #     current_video_process = None
     
     current_segment = None
     video_playing = False
