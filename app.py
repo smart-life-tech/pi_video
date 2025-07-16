@@ -64,7 +64,9 @@ def cancel_current_timer():
 def play_video_segment(segment_name):
     """Play a specific segment from the merged video"""
     global current_video_process, current_segment, video_playing
-    
+    # Prevent starting if already playing
+    if video_playing:
+        return None
     if not os.path.exists(MERGED_VIDEO):
         print(f"Merged video not found: {MERGED_VIDEO}")
         return None
@@ -190,7 +192,7 @@ def switch_to_random_video():
     global current_segment, black_screen_process, video_playing, current_timer
     
     # Don't switch if a video is already playing
-    if video_playing:
+    if video_playing or current_timer is not None:
         print("Video already playing, ignoring button press")
         return
     
@@ -203,6 +205,8 @@ def switch_to_random_video():
     #         black_screen_process.kill()
     #     black_screen_process = None
     
+    # Cancel any existing timer (double check)
+    cancel_current_timer()
     # Select random video (avoid repeating same video)
     available_videos = VIDEO_SEGMENTS.copy()
     if current_segment:
@@ -230,7 +234,7 @@ def return_to_idle():
     current_timer = None
     
     # Only proceed if we're actually playing a video
-    if not video_playing:
+    if not video_playing or not system_running:
         return
     print("Video finished")
     
@@ -306,8 +310,9 @@ def check_processes():
         video_playing = False
         # Cancel the timer since the video finished early
         cancel_current_timer()
+        time.sleep(0.1)
         # Only restart black screen if it's not failing
-        if not black_screen_failed:
+        if not black_screen_failed and not video_playing:
             show_black_screen()
 
 # === Main Loop ===
