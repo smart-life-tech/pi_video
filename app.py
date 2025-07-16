@@ -32,7 +32,7 @@ current_segment = None
 system_running = True
 black_screen_failed = False
 last_black_screen_attempt = 0
-video_playing = False
+video_playing = False  # Track if video is currently playing
 
 def get_audio_device():
     """Detect the correct audio device"""
@@ -51,13 +51,6 @@ def kill_all_vlc():
     try:
         subprocess.call(["pkill", "-f", "vlc"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
-    except:
-        pass
-
-def hide_cursor():
-    """Hide the mouse cursor"""
-    try:
-        subprocess.call(["unclutter", "-idle", "0"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except:
         pass
 
@@ -95,7 +88,7 @@ def play_video_segment(segment_name):
         except:
             current_video_process.kill()
     
-    # Start new video process with immediate fullscreen
+    # Start new video process with no interface elements
     env = os.environ.copy()
     env['DISPLAY'] = ':0'
     
@@ -103,36 +96,31 @@ def play_video_segment(segment_name):
     
     current_video_process = subprocess.Popen([
         "cvlc", 
-        "--fullscreen",
-        "--no-embedded-video",  # Don't embed in interface
-        "--video-on-top",  # Keep video on top
-        "--no-video-deco",  # No window decorations
+        "--fullscreen", 
         "--no-osd", 
         "--play-and-exit",
         "--no-video-title-show",
         "--no-snapshot-preview",
-        "--no-spu",
+        "--no-spu",  # No subtitles
         "--no-disable-screensaver",
         "--aout=alsa", 
         f"--alsa-audio-device={audio_device}",
         f"--start-time={start_time}",
         f"--stop-time={stop_time}",
-        "--intf", "dummy",
-        "--extraintf", "",
-        "--no-interact",
-        "--no-keyboard",
-        "--no-mouse-events",
-        "--no-qt-privacy-ask",  # Don't ask about privacy
-        "--no-qt-updates-notif",  # No update notifications
+        "--intf", "dummy",  # No interface
+        "--extraintf", "",  # No extra interfaces
+        "--no-interact",  # No interaction
+        "--no-keyboard",  # No keyboard shortcuts
+        "--no-mouse-events",  # No mouse events
         MERGED_VIDEO
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, 
-       stdin=subprocess.DEVNULL)
+       stdin=subprocess.DEVNULL)  # Close stdin to prevent input
     
     video_playing = True
     return current_video_process
 
 def show_black_screen():
-    """Show black screen immediately in fullscreen"""
+    """Show black screen with no interface elements"""
     global black_screen_process, black_screen_failed, last_black_screen_attempt
     
     # Prevent rapid restart attempts
@@ -157,15 +145,14 @@ def show_black_screen():
         return None
     
     if not black_screen_failed:
+        print("Starting black screen")
+        
         env = os.environ.copy()
         env['DISPLAY'] = ':0'
         
         black_screen_process = subprocess.Popen([
             "cvlc", 
-            "--fullscreen",
-            "--no-embedded-video",
-            "--video-on-top",
-            "--no-video-deco",
+            "--fullscreen", 
             "--no-video-title-show", 
             "--no-osd",
             "--no-snapshot-preview",
@@ -178,15 +165,14 @@ def show_black_screen():
             "--no-interact",
             "--no-keyboard",
             "--no-mouse-events",
-            "--no-qt-privacy-ask",
-            "--no-qt-updates-notif",
             BLACK_SCREEN_VIDEO
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
            stdin=subprocess.DEVNULL)
         
-        # Give it more time to start properly
-        time.sleep(2)
+        # Check if it started successfully
+        time.sleep(1)
         if black_screen_process.poll() is not None:
+            print("Black screen failed")
             black_screen_failed = True
             black_screen_process = None
     
@@ -198,6 +184,7 @@ def switch_to_random_video():
     
     # Don't switch if a video is already playing
     if video_playing:
+        print("Video already playing, ignoring button press")
         return
     
     # Stop black screen
@@ -216,6 +203,7 @@ def switch_to_random_video():
     
     if available_videos:
         selected_segment = random.choice(available_videos)
+        print(f"Switching to: {selected_segment['name']}")
         
         # Play the selected segment
         play_video_segment(selected_segment['name'])
@@ -228,6 +216,8 @@ def switch_to_random_video():
 def return_to_idle():
     """Return to idle state after video ends"""
     global current_video_process, current_segment, video_playing
+    
+    print("Video finished")
     
     # Stop current video
     if current_video_process:
@@ -249,6 +239,7 @@ def cleanup_all():
     """Clean up all processes"""
     global system_running, current_video_process, black_screen_process
     
+    print("Cleaning up all processes...")
     system_running = False
     
     # Stop current video
@@ -271,17 +262,21 @@ def cleanup_all():
     kill_all_vlc()
 
 def play_boot_sound():
-    """Play boot sound with aplay"""
+    """Play boot sound with aplay (more reliable)"""
     if not os.path.exists(BOOT_SOUND_FILE):
+        print(f"Boot sound file not found: {BOOT_SOUND_FILE}")
         return
+    
+    print("Playing boot sound")
     
     try:
         subprocess.run(['aplay', BOOT_SOUND_FILE], 
                       stdout=subprocess.DEVNULL, 
                       stderr=subprocess.DEVNULL, 
                       check=True)
-    except:
-        pass
+        print("Boot sound played successfully")
+    except Exception as e:
+        print(f"Boot sound error: {e}")
 
 def check_processes():
     """Check if processes are still running"""
@@ -289,6 +284,7 @@ def check_processes():
     
     # Check if video process finished
     if current_video_process and current_video_process.poll() is not None:
+        print("Video process finished")
         current_video_process = None
         current_segment = None
         video_playing = False
@@ -301,24 +297,21 @@ try:
     # Set display environment
     os.environ['DISPLAY'] = ':0'
     
-    # Hide cursor
-    hide_cursor()
-    
     # Kill any existing VLC processes
     kill_all_vlc()
     
-    # Start black screen FIRST (before any output)
+    # Play boot sound
+    play_boot_sound()
+    time.sleep(2)
+    
+    # Try to start with black screen
     show_black_screen()
     
-    # Play boot sound while black screen is showing
-    play_boot_sound()
-    
-    # Give black screen time to fully load
-    time.sleep(3)
+    print("System ready. Press button to switch videos...")
     
     button_last_state = GPIO.HIGH
     last_button_time = 0
-    debounce_delay = 0.5
+    debounce_delay = 0.5  # Increased debounce delay
     last_process_check = 0
 
     while system_running:
@@ -326,6 +319,7 @@ try:
         
         # Handle Shutdown Button
         if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
+            print("Shutdown button pressed. Shutting down...")
             time.sleep(2)
             if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
                 cleanup_all()
@@ -337,9 +331,10 @@ try:
         if (button_current_state == GPIO.LOW and 
             button_last_state == GPIO.HIGH and 
             current_time - last_button_time > debounce_delay and
-            not video_playing):
+            not video_playing):  # Only allow when no video is playing
             
             last_button_time = current_time
+            print("Button pressed - switching to random video")
             switch_to_random_video()
         
         button_last_state = button_current_state
@@ -352,8 +347,9 @@ try:
         time.sleep(0.05)
 
 except KeyboardInterrupt:
-    pass
+    print("Exiting program...")
 
 finally:
     cleanup_all()
     GPIO.cleanup()
+    print("Cleanup complete!")
