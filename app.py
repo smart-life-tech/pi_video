@@ -19,9 +19,7 @@ VIDEO_SEGMENTS = [
     {"name": "video2", "start": 45.9, "duration": 42.2},
     {"name": "video3", "start": 88.0, "duration": 22.9},
 ]
-# ALSA HDMI device (from `aplay -l`) => card 1, device 0
-env = os.environ.copy()
-env['AUDIODEV'] = 'hw:1,0'
+
 # === Setup ===
 GPIO.setmode(GPIO.BCM)
 GPIO.setup(BUTTON_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
@@ -32,6 +30,8 @@ current_video_process = None
 black_screen_process = None
 current_segment = None
 system_running = True
+black_screen_failed = False
+last_black_screen_attempt = 0
 
 def kill_all_vlc():
     """Kill all VLC processes"""
@@ -40,6 +40,31 @@ def kill_all_vlc():
         time.sleep(0.5)
     except:
         pass
+
+def create_simple_black_screen():
+    """Create a simple black screen using VLC's blank video"""
+    global black_screen_process
+    
+    print("Creating simple black screen")
+    
+    env = os.environ.copy()
+    env['DISPLAY'] = ':0'
+    
+    # Use VLC's built-in blank video source
+    black_screen_process = subprocess.Popen([
+        "cvlc", 
+        "--fullscreen", 
+        "--no-osd",
+        "--no-video-title-show",
+        "--loop",
+        "--no-audio",
+        "--intf", "dummy",
+        "--vout", "dummy",  # Use dummy video output
+        "--aout", "dummy",  # Use dummy audio output
+        "vlc://nop"  # No operation - creates blank screen
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    
+    return black_screen_process
 
 def play_video_segment(segment_name):
     """Play a specific segment from the merged video"""
@@ -91,12 +116,15 @@ def play_video_segment(segment_name):
     return current_video_process
 
 def show_black_screen():
-    """Show black screen loop"""
-    global black_screen_process
+    """Show black screen with error handling"""
+    global black_screen_process, black_screen_failed, last_black_screen_attempt
     
-    if not os.path.exists(BLACK_SCREEN_VIDEO):
-        print("Black screen video not found")
-        return None
+    # Prevent rapid restart attempts
+    current_time = time.time()
+    if current_time - last_black_screen_attempt < 5:  # Wait 5 seconds between attempts
+        return black_screen_process
+    
+    last_black_screen_attempt = current_time
     
     # Kill any existing black screen process
     if black_screen_process:
@@ -105,23 +133,38 @@ def show_black_screen():
             black_screen_process.wait(timeout=1)
         except:
             black_screen_process.kill()
+        black_screen_process = None
     
-    print("Starting black screen loop")
+    # Try to use the black screen video file first
+    if os.path.exists(BLACK_SCREEN_VIDEO) and not black_screen_failed:
+        print("Starting black screen with video file")
+        
+        env = os.environ.copy()
+        env['DISPLAY'] = ':0'
+        
+        black_screen_process = subprocess.Popen([
+            "cvlc", "--fullscreen", "--no-video-title-show", "--no-osd",
+            "--loop", "--no-audio", "--intf", "dummy",
+            BLACK_SCREEN_VIDEO
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        
+        # Check if it started successfully
+        time.sleep(1)
+        if black_screen_process.poll() is not None:
+            print("Black screen video failed, marking as failed")
+            black_screen_failed = True
+            black_screen_process = None
     
-    env = os.environ.copy()
-    env['DISPLAY'] = ':0'
-    
-    black_screen_process = subprocess.Popen([
-        "cvlc", "--fullscreen", "--no-video-title-show", "--no-osd",
-        "--loop", "--no-audio", "--intf", "dummy",
-        BLACK_SCREEN_VIDEO
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    # Fallback: create simple black screen or just skip it
+    if not black_screen_process:
+        print("No black screen - videos will play directly")
+        # Don't create any black screen process - just let videos play directly
     
     return black_screen_process
 
 def switch_to_random_video():
     """Switch to a random video"""
-    global current_segment
+    global current_segment, black_screen_process
     
     # Stop black screen
     if black_screen_process:
@@ -130,6 +173,7 @@ def switch_to_random_video():
             black_screen_process.wait(timeout=1)
         except:
             black_screen_process.kill()
+        black_screen_process = None
     
     # Select random video (avoid repeating same video)
     available_videos = VIDEO_SEGMENTS.copy()
@@ -144,15 +188,15 @@ def switch_to_random_video():
         play_video_segment(selected_segment['name'])
         
         # Set up timer to return to black screen after video ends
-        timer = threading.Timer(selected_segment['duration'], return_to_black_screen)
+        timer = threading.Timer(selected_segment['duration'], return_to_idle)
         timer.daemon = True
         timer.start()
 
-def return_to_black_screen():
-    """Return to black screen after video ends"""
+def return_to_idle():
+    """Return to idle state after video ends"""
     global current_video_process, current_segment
     
-    print("Video finished, returning to black screen")
+    print("Video finished")
     
     # Stop current video
     if current_video_process:
@@ -165,8 +209,9 @@ def return_to_black_screen():
     
     current_segment = None
     
-    # Show black screen
-    show_black_screen()
+    # Only show black screen if it's working
+    if not black_screen_failed:
+        show_black_screen()
 
 def cleanup_all():
     """Clean up all processes"""
@@ -209,22 +254,16 @@ def play_boot_sound():
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
 
 def check_processes():
-    """Check if processes are still running"""
-    global current_video_process, black_screen_process, current_segment
+    """Check if processes are still running - with rate limiting"""
+    global current_video_process, current_segment
     
     # Check if video process finished
     if current_video_process and current_video_process.poll() is not None:
         print("Video process finished")
         current_video_process = None
         current_segment = None
-        # Start black screen if not already running
-        if not black_screen_process or black_screen_process.poll() is not None:
-            show_black_screen()
-    
-    # Check if black screen process died
-    if black_screen_process and black_screen_process.poll() is not None:
-        if not current_video_process:  # Only restart if no video is playing
-            print("Black screen process died, restarting...")
+        # Only restart black screen if it's not failing
+        if not black_screen_failed:
             show_black_screen()
 
 # === Main Loop ===
@@ -239,7 +278,7 @@ try:
     play_boot_sound()
     time.sleep(2)
     
-    # Start with black screen
+    # Try to start with black screen (but don't loop if it fails)
     show_black_screen()
     
     print("System ready. Press button to switch videos...")
@@ -247,6 +286,7 @@ try:
     button_last_state = GPIO.HIGH
     last_button_time = 0
     debounce_delay = 0.3
+    last_process_check = 0
 
     while system_running:
         current_time = time.time()
@@ -272,8 +312,10 @@ try:
         
         button_last_state = button_current_state
         
-        # Check process status
-        check_processes()
+        # Check process status (rate limited to once per second)
+        if current_time - last_process_check > 1.0:
+            check_processes()
+            last_process_check = current_time
         
         time.sleep(0.05)
 
