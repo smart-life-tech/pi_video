@@ -81,12 +81,12 @@ def play_video_segment(segment_name):
     print(f"Playing: {segment_name} from {start_time}s for {duration}s")
     
     # Kill any existing video process
-    if current_video_process:
-        try:
-            current_video_process.terminate()
-            current_video_process.wait(timeout=1)
-        except:
-            current_video_process.kill()
+    # if current_video_process:
+    #     try:
+    #         current_video_process.terminate()
+    #         current_video_process.wait(timeout=1)
+    #     except:
+    #         current_video_process.kill()
     
     # Start new video process with no interface elements
     env = os.environ.copy()
@@ -131,13 +131,13 @@ def show_black_screen():
     last_black_screen_attempt = current_time
     
     # Kill any existing black screen process
-    if black_screen_process:
-        try:
-            black_screen_process.terminate()
-            black_screen_process.wait(timeout=1)
-        except:
-            black_screen_process.kill()
-        black_screen_process = None
+    # if black_screen_process:
+    #     try:
+    #         black_screen_process.terminate()
+    #         black_screen_process.wait(timeout=1)
+    #     except:
+    #         black_screen_process.kill()
+    #     black_screen_process = None
     
     if not os.path.exists(BLACK_SCREEN_VIDEO):
         print(f"Black screen video not found: {BLACK_SCREEN_VIDEO}")
