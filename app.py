@@ -33,6 +33,22 @@ system_running = True
 black_screen_failed = False
 last_black_screen_attempt = 0
 
+def get_audio_device():
+    """Detect the correct audio device"""
+    try:
+        # Try to get audio devices
+        result = subprocess.run(['aplay', '-l'], capture_output=True, text=True)
+        output = result.stdout
+        print(f"Audio devices: {output}")
+        
+        # Look for HDMI or default device
+        if 'HDMI' in output:
+            return "hw:1,0"  # Usually HDMI
+        else:
+            return "hw:0,0"  # Default device
+    except:
+        return "hw:0,0"  # Fallback
+
 def kill_all_vlc():
     """Kill all VLC processes"""
     try:
@@ -40,31 +56,6 @@ def kill_all_vlc():
         time.sleep(0.5)
     except:
         pass
-
-def create_simple_black_screen():
-    """Create a simple black screen using VLC's blank video"""
-    global black_screen_process
-    
-    print("Creating simple black screen")
-    
-    env = os.environ.copy()
-    env['DISPLAY'] = ':0'
-    
-    # Use VLC's built-in blank video source
-    black_screen_process = subprocess.Popen([
-        "cvlc", 
-        "--fullscreen", 
-        "--no-osd",
-        "--no-video-title-show",
-        "--loop",
-        "--no-audio",
-        "--intf", "dummy",
-        "--vout", "dummy",  # Use dummy video output
-        "--aout", "dummy",  # Use dummy audio output
-        "vlc://nop"  # No operation - creates blank screen
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
-    
-    return black_screen_process
 
 def play_video_segment(segment_name):
     """Play a specific segment from the merged video"""
@@ -104,9 +95,11 @@ def play_video_segment(segment_name):
     env = os.environ.copy()
     env['DISPLAY'] = ':0'
     
+    audio_device = get_audio_device()
+    
     current_video_process = subprocess.Popen([
         "cvlc", "--fullscreen", "--no-osd", "--play-and-exit",
-        "--aout=alsa", "--alsa-audio-device=hw:0,0",
+        "--aout=alsa", f"--alsa-audio-device={audio_device}",
         f"--start-time={start_time}",
         f"--stop-time={stop_time}",
         "--intf", "dummy",
@@ -116,12 +109,12 @@ def play_video_segment(segment_name):
     return current_video_process
 
 def show_black_screen():
-    """Show black screen with error handling"""
+    """Show black screen with better error handling"""
     global black_screen_process, black_screen_failed, last_black_screen_attempt
     
     # Prevent rapid restart attempts
     current_time = time.time()
-    if current_time - last_black_screen_attempt < 5:  # Wait 5 seconds between attempts
+    if current_time - last_black_screen_attempt < 5:
         return black_screen_process
     
     last_black_screen_attempt = current_time
@@ -135,30 +128,50 @@ def show_black_screen():
             black_screen_process.kill()
         black_screen_process = None
     
-    # Try to use the black screen video file first
-    if os.path.exists(BLACK_SCREEN_VIDEO) and not black_screen_failed:
+    # Check if black screen video exists and is valid
+    if not os.path.exists(BLACK_SCREEN_VIDEO):
+        print(f"Black screen video not found: {BLACK_SCREEN_VIDEO}")
+        black_screen_failed = True
+        return None
+    
+    # Try to get file info
+    try:
+        result = subprocess.run(['file', BLACK_SCREEN_VIDEO], capture_output=True, text=True)
+        print(f"Black screen file info: {result.stdout}")
+    except:
+        pass
+    
+    if not black_screen_failed:
         print("Starting black screen with video file")
         
         env = os.environ.copy()
         env['DISPLAY'] = ':0'
         
+        # Try with more compatible VLC options
         black_screen_process = subprocess.Popen([
-            "cvlc", "--fullscreen", "--no-video-title-show", "--no-osd",
-            "--loop", "--no-audio", "--intf", "dummy",
+            "cvlc", 
+            "--fullscreen", 
+            "--no-video-title-show", 
+            "--no-osd",
+            "--loop", 
+            "--no-audio",
+            "--intf", "dummy",
+            "--vout", "gl",  # Try OpenGL output
             BLACK_SCREEN_VIDEO
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
         
         # Check if it started successfully
-        time.sleep(1)
+        time.sleep(2)
         if black_screen_process.poll() is not None:
-            print("Black screen video failed, marking as failed")
+            # Get error output
+            stdout, stderr = black_screen_process.communicate()
+            print(f"Black screen failed. stdout: {stdout.decode()}")
+            print(f"Black screen failed. stderr: {stderr.decode()}")
             black_screen_failed = True
             black_screen_process = None
     
-    # Fallback: create simple black screen or just skip it
     if not black_screen_process:
         print("No black screen - videos will play directly")
-        # Don't create any black screen process - just let videos play directly
     
     return black_screen_process
 
@@ -187,7 +200,7 @@ def switch_to_random_video():
         # Play the selected segment
         play_video_segment(selected_segment['name'])
         
-        # Set up timer to return to black screen after video ends
+        # Set up timer to return to idle after video ends
         timer = threading.Timer(selected_segment['duration'], return_to_idle)
         timer.daemon = True
         timer.start()
@@ -240,21 +253,56 @@ def cleanup_all():
     kill_all_vlc()
 
 def play_boot_sound():
-    """Play boot sound"""
-    if os.path.exists(BOOT_SOUND_FILE):
-        print("Playing boot sound")
+    """Play boot sound with better audio device detection"""
+    if not os.path.exists(BOOT_SOUND_FILE):
+        print(f"Boot sound file not found: {BOOT_SOUND_FILE}")
+        return
+    
+    # Check file info
+    try:
+        result = subprocess.run(['file', BOOT_SOUND_FILE], capture_output=True, text=True)
+        print(f"Boot sound file info: {result.stdout}")
+    except:
+        pass
+    
+    print("Playing boot sound")
+    
+    # Try multiple methods to play the sound
+    audio_device = get_audio_device()
+    
+    # Method 1: Try with VLC
+    try:
         env = os.environ.copy()
         env['DISPLAY'] = ':0'
         
-        subprocess.Popen([
+        process = subprocess.Popen([
             "cvlc", "--play-and-exit", "--no-osd",
-            "--aout=alsa", "--alsa-audio-device=hw:1,0",
+            "--aout=alsa", f"--alsa-audio-device={audio_device}",
             "--intf", "dummy",
             BOOT_SOUND_FILE
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        
+        # Wait a bit and check if it's working
+        time.sleep(1)
+        if process.poll() is None:
+            print("Boot sound playing with VLC")
+            return
+        else:
+            stdout, stderr = process.communicate()
+            print(f"VLC boot sound failed: {stderr.decode()}")
+    except Exception as e:
+        print(f"VLC boot sound error: {e}")
+    
+    # Method 2: Try with aplay as fallback
+    try:
+        print("Trying boot sound with aplay")
+        subprocess.run(['aplay', BOOT_SOUND_FILE], check=True)
+        print("Boot sound played with aplay")
+    except Exception as e:
+        print(f"aplay boot sound error: {e}")
 
 def check_processes():
-    """Check if processes are still running - with rate limiting"""
+    """Check if processes are still running"""
     global current_video_process, current_segment
     
     # Check if video process finished
@@ -274,11 +322,11 @@ try:
     # Kill any existing VLC processes
     kill_all_vlc()
     
-    # Play boot sound
+    # Play boot sound with better error handling
     play_boot_sound()
-    time.sleep(2)
+    time.sleep(3)  # Give more time for boot sound
     
-    # Try to start with black screen (but don't loop if it fails)
+    # Try to start with black screen
     show_black_screen()
     
     print("System ready. Press button to switch videos...")
@@ -312,7 +360,7 @@ try:
         
         button_last_state = button_current_state
         
-        # Check process status (rate limited to once per second)
+        # Check process status (rate limited)
         if current_time - last_process_check > 1.0:
             check_processes()
             last_process_check = current_time
