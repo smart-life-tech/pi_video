@@ -4,7 +4,7 @@ import random
 import time
 import os
 import threading
-import queue
+import signal
 
 # === Configuration ===
 BUTTON_GPIO = 17  # Video trigger button
@@ -27,324 +27,226 @@ GPIO.setup(BUTTON_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 GPIO.setup(SHUTDOWN_GPIO, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
 # === Global Variables ===
-video_threads = {}
-black_screen_thread = None
+video_processes = {}
+black_screen_process = None
 current_active_video = None
 system_running = True
 
-class VideoThread:
-    def __init__(self, segment_name, segment_data):
-        self.segment_name = segment_name
-        self.segment_data = segment_data
-        self.process = None
-        self.command_queue = queue.Queue()
-        self.is_active = False
-        self.is_ready = False
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-    
-    def _run(self):
-        """Main thread loop for this video segment"""
-        global system_running
-        
-        while system_running:
-            try:
-                # Wait for commands with timeout
-                try:
-                    command = self.command_queue.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-                
-                if command == "prepare":
-                    self._prepare_video()
-                elif command == "play":
-                    self._play_video()
-                elif command == "pause":
-                    self._pause_video()
-                elif command == "stop":
-                    self._stop_video()
-                elif command == "cleanup":
-                    self._cleanup()
-                    break
-                    
-            except Exception as e:
-                print(f"Error in video thread {self.segment_name}: {e}")
-    
-    def _prepare_video(self):
-        """Prepare video (load and pause at start position)"""
-        if self.process:
-            return
-        
-        start_time = self.segment_data["start"]
-        duration = self.segment_data["duration"]
-        stop_time = start_time + duration
-        
-        print(f"Preparing {self.segment_name} at {start_time}s")
-        
-        # Start VLC paused at the correct position
-        self.process = subprocess.Popen([
-            "cvlc", "--fullscreen", "--no-osd",
-            "--aout=alsa", "--alsa-audio-device=hw:0,0",
-            f"--start-time={start_time}",
-            f"--stop-time={stop_time}",
-            "--start-paused",  # Start in paused state
-            MERGED_VIDEO
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        time.sleep(0.5)  # Give VLC time to load
-        self.is_ready = True
-    
-    def _play_video(self):
-        """Resume/play the video"""
-        if self.process and self.is_ready:
-            print(f"Playing {self.segment_name}")
-            # Send play command via stdin (VLC hotkey)
-            try:
-                self.process.stdin.write(b' ')  # Space bar = play/pause
-                self.process.stdin.flush()
-            except:
-                # Alternative: use xdotool to send space key to VLC window
-                subprocess.call(["xdotool", "search", "--name", "VLC", "key", "space"], 
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.is_active = True
-    
-    def _pause_video(self):
-        """Pause the video"""
-        if self.process and self.is_active:
-            print(f"Pausing {self.segment_name}")
-            try:
-                self.process.stdin.write(b' ')  # Space bar = play/pause
-                self.process.stdin.flush()
-            except:
-                subprocess.call(["xdotool", "search", "--name", "VLC", "key", "space"], 
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.is_active = False
-    
-    def _stop_video(self):
-        """Stop and hide the video"""
-        if self.process:
-            print(f"Stopping {self.segment_name}")
-            try:
-                self.process.terminate()
-                self.process.wait(timeout=2)
-            except:
-                self.process.kill()
-            self.process = None
-            self.is_active = False
-            self.is_ready = False
-    
-    def _cleanup(self):
-        """Clean up resources"""
-        self._stop_video()
-    
-    def send_command(self, command):
-        """Send command to this video thread"""
-        self.command_queue.put(command)
-
-class BlackScreenThread:
-    def __init__(self):
-        self.process = None
-        self.command_queue = queue.Queue()
-        self.is_active = False
-        self.is_ready = False
-        self.thread = threading.Thread(target=self._run, daemon=True)
-        self.thread.start()
-    
-    def _run(self):
-        """Main thread loop for black screen"""
-        global system_running
-        
-        while system_running:
-            try:
-                try:
-                    command = self.command_queue.get(timeout=0.1)
-                except queue.Empty:
-                    continue
-                
-                if command == "prepare":
-                    self._prepare_black_screen()
-                elif command == "show":
-                    self._show_black_screen()
-                elif command == "hide":
-                    self._hide_black_screen()
-                elif command == "cleanup":
-                    self._cleanup()
-                    break
-                    
-            except Exception as e:
-                print(f"Error in black screen thread: {e}")
-    
-    def _prepare_black_screen(self):
-        """Prepare black screen video"""
-        if self.process or not os.path.exists(BLACK_SCREEN_VIDEO):
-            return
-        
-        print("Preparing black screen")
-        self.process = subprocess.Popen([
-            "cvlc", "--fullscreen", "--no-video-title-show", "--no-osd",
-            "--loop", "--no-audio", "--start-paused",
-            BLACK_SCREEN_VIDEO
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
+def kill_all_vlc():
+    """Kill all VLC processes"""
+    try:
+        subprocess.call(["pkill", "-f", "vlc"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
-        self.is_ready = True
-    
-    def _show_black_screen(self):
-        """Show black screen"""
-        if self.process and self.is_ready and not self.is_active:
-            print("Showing black screen")
-            try:
-                self.process.stdin.write(b' ')  # Play
-                self.process.stdin.flush()
-            except:
-                subprocess.call(["xdotool", "search", "--name", "VLC", "key", "space"], 
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.is_active = True
-    
-    def _hide_black_screen(self):
-        """Hide black screen"""
-        if self.process and self.is_active:
-            print("Hiding black screen")
-            try:
-                self.process.stdin.write(b' ')  # Pause
-                self.process.stdin.flush()
-            except:
-                subprocess.call(["xdotool", "search", "--name", "VLC", "key", "space"], 
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.is_active = False
-    
-    def _cleanup(self):
-        """Clean up resources"""
-        if self.process:
-            try:
-                self.process.terminate()
-                self.process.wait(timeout=2)
-            except:
-                self.process.kill()
-            self.process = None
-    
-    def send_command(self, command):
-        """Send command to black screen thread"""
-        self.command_queue.put(command)
+    except:
+        pass
 
-def initialize_all_threads():
-    """Initialize all video threads and black screen thread"""
-    global video_threads, black_screen_thread
+def create_video_process(segment_name, segment_data):
+    """Create a VLC process for a video segment, ready but not playing"""
+    start_time = segment_data["start"]
+    duration = segment_data["duration"]
+    stop_time = start_time + duration
     
-    print("Initializing all video threads...")
+    print(f"Creating process for {segment_name}")
     
-    # Create video threads for each segment
+    # Create VLC process with proper environment
+    env = os.environ.copy()
+    env['DISPLAY'] = ':0'
+    
+    process = subprocess.Popen([
+        "cvlc", 
+        "--fullscreen", 
+        "--no-osd",
+        "--no-video-title-show",
+        "--aout=alsa", 
+        "--alsa-audio-device=hw:0,0",
+        f"--start-time={start_time}",
+        f"--stop-time={stop_time}",
+        "--intf", "dummy",  # No interface dialogs
+        "--extraintf", "hotkeys",  # Enable hotkeys
+        MERGED_VIDEO
+    ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    
+    return process
+
+def create_black_screen_process():
+    """Create black screen VLC process"""
+    if not os.path.exists(BLACK_SCREEN_VIDEO):
+        print("Black screen video not found")
+        return None
+    
+    print("Creating black screen process")
+    
+    env = os.environ.copy()
+    env['DISPLAY'] = ':0'
+    
+    process = subprocess.Popen([
+        "cvlc", 
+        "--fullscreen", 
+        "--no-video-title-show", 
+        "--no-osd",
+        "--loop", 
+        "--no-audio",
+        "--intf", "dummy",
+        "--extraintf", "hotkeys",
+        BLACK_SCREEN_VIDEO
+    ], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    
+    return process
+
+def pause_process(process):
+    """Pause a VLC process"""
+    if process and process.poll() is None:
+        try:
+            # Send pause signal (SIGSTOP)
+            process.send_signal(signal.SIGSTOP)
+            return True
+        except:
+            return False
+    return False
+
+def resume_process(process):
+    """Resume a VLC process"""
+    if process and process.poll() is None:
+        try:
+            # Send resume signal (SIGCONT)
+            process.send_signal(signal.SIGCONT)
+            return True
+        except:
+            return False
+    return False
+
+def initialize_all_processes():
+    """Initialize all video processes"""
+    global video_processes, black_screen_process
+    
+    print("Initializing all video processes...")
+    
+    # Kill any existing VLC processes
+    kill_all_vlc()
+    time.sleep(1)
+    
+    # Create video processes for each segment
     for segment in VIDEO_SEGMENTS:
-        thread = VideoThread(segment["name"], segment)
-        video_threads[segment["name"]] = thread
-        # Prepare each video (load and pause)
-        thread.send_command("prepare")
+        process = create_video_process(segment["name"], segment)
+        if process:
+            video_processes[segment["name"]] = process
+            time.sleep(0.5)  # Stagger creation
+            # Pause immediately after creation
+            pause_process(process)
     
-    # Create black screen thread
-    black_screen_thread = BlackScreenThread()
-    black_screen_thread.send_command("prepare")
+    # Create black screen process
+    black_screen_process = create_black_screen_process()
+    if black_screen_process:
+        time.sleep(0.5)
     
-    # Wait for all threads to be ready
-    time.sleep(2)
-    
-    # Start with black screen
-    black_screen_thread.send_command("show")
-    
-    print("All threads initialized and ready!")
+    print("All processes initialized!")
 
 def switch_to_random_video():
     """Switch to a random video smoothly"""
-    global current_active_video
+    global current_active_video, black_screen_process
     
-    # Hide current video if any
-    if current_active_video:
-        video_threads[current_active_video].send_command("pause")
+    # Pause current video if any
+    if current_active_video and current_active_video in video_processes:
+        pause_process(video_processes[current_active_video])
     
-    # Hide black screen
-    if black_screen_thread:
-        black_screen_thread.send_command("hide")
+    # Pause black screen
+    if black_screen_process:
+        pause_process(black_screen_process)
     
-    # Select random video
-    available_videos = list(video_threads.keys())
-    if current_active_video in available_videos:
-        available_videos.remove(current_active_video)  # Don't repeat same video
+    # Select random video (avoid repeating same video)
+    available_videos = list(video_processes.keys())
+    if current_active_video in available_videos and len(available_videos) > 1:
+        available_videos.remove(current_active_video)
     
     if available_videos:
         selected_video = random.choice(available_videos)
         print(f"Switching to: {selected_video}")
         
-        # Play the selected video
-        video_threads[selected_video].send_command("play")
-        current_active_video = selected_video
-        
-        # Set up timer to return to black screen after video ends
-        segment_duration = None
-        for seg in VIDEO_SEGMENTS:
-            if seg["name"] == selected_video:
-                segment_duration = seg["duration"]
-                break
-        
-        if segment_duration:
-            timer = threading.Timer(segment_duration, return_to_black_screen)
-            timer.daemon = True
-            timer.start()
+        # Resume the selected video
+        if resume_process(video_processes[selected_video]):
+            current_active_video = selected_video
+            
+            # Set up timer to return to black screen after video ends
+            segment_duration = None
+            for seg in VIDEO_SEGMENTS:
+                if seg["name"] == selected_video:
+                    segment_duration = seg["duration"]
+                    break
+            
+            if segment_duration:
+                timer = threading.Timer(segment_duration, return_to_black_screen)
+                timer.daemon = True
+                timer.start()
 
 def return_to_black_screen():
     """Return to black screen after video ends"""
-    global current_active_video
+    global current_active_video, black_screen_process
     
-    if current_active_video:
+    if current_active_video and current_active_video in video_processes:
         print(f"Video {current_active_video} finished, returning to black screen")
-        video_threads[current_active_video].send_command("pause")
+        pause_process(video_processes[current_active_video])
         current_active_video = None
     
-    if black_screen_thread:
-        black_screen_thread.send_command("show")
+    # Resume black screen
+    if black_screen_process:
+        resume_process(black_screen_process)
 
-def cleanup_all_threads():
-    """Clean up all threads"""
-    global system_running
+def cleanup_all_processes():
+    """Clean up all processes"""
+    global system_running, video_processes, black_screen_process
     
-    print("Cleaning up all threads...")
+    print("Cleaning up all processes...")
     system_running = False
     
-    # Clean up video threads
-    for thread in video_threads.values():
-        thread.send_command("cleanup")
+    # Terminate video processes
+    for name, process in video_processes.items():
+        if process:
+            try:
+                process.terminate()
+                process.wait(timeout=2)
+            except:
+                process.kill()
     
-    # Clean up black screen thread
-    if black_screen_thread:
-        black_screen_thread.send_command("cleanup")
+    # Terminate black screen process
+    if black_screen_process:
+        try:
+            black_screen_process.terminate()
+            black_screen_process.wait(timeout=2)
+        except:
+            black_screen_process.kill()
     
-    # Kill any remaining VLC processes
-    time.sleep(1)
-    subprocess.call(["pkill", "-f", "vlc"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Final cleanup
+    kill_all_vlc()
 
 def play_boot_sound():
     """Play boot sound"""
     if os.path.exists(BOOT_SOUND_FILE):
         print("Playing boot sound")
+        env = os.environ.copy()
+        env['DISPLAY'] = ':0'
+        
         subprocess.Popen([
             "cvlc", "--play-and-exit", "--no-osd",
             "--aout=alsa", "--alsa-audio-device=hw:1,0",
+            "--intf", "dummy",
             BOOT_SOUND_FILE
-        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
 
 # === Main Loop ===
 try:
-    # Check if xdotool is available (for sending keys to VLC)
-    try:
-        subprocess.check_call(["which", "xdotool"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except:
-        print("Warning: xdotool not found. Installing...")
-        os.system("sudo apt-get update && sudo apt-get install -y xdotool")
+    # Set display environment
+    os.environ['DISPLAY'] = ':0'
     
     # Play boot sound
     play_boot_sound()
-    time.sleep(1)
+    time.sleep(2)
     
-    # Initialize all threads
-    initialize_all_threads()
+    # Initialize all processes
+    initialize_all_processes()
+    
+    # Start with black screen
+    if black_screen_process:
+        resume_process(black_screen_process)
     
     print("System ready. Press button to switch videos...")
     
@@ -360,7 +262,7 @@ try:
             print("Shutdown button pressed. Shutting down...")
             time.sleep(2)
             if GPIO.input(SHUTDOWN_GPIO) == GPIO.LOW:
-                cleanup_all_threads()
+                cleanup_all_processes()
                 os.system("sudo shutdown -h now")
 
         # Handle Video Button with debouncing
@@ -381,7 +283,6 @@ except KeyboardInterrupt:
     print("Exiting program...")
 
 finally:
-    cleanup_all_threads()
+    cleanup_all_processes()
     GPIO.cleanup()
     print("Cleanup complete!")
-    
