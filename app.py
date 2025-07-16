@@ -33,6 +33,7 @@ system_running = True
 black_screen_failed = False
 last_black_screen_attempt = 0
 video_playing = False  # Track if video is currently playing
+current_timer = None  # Track the current timer
 
 def get_audio_device():
     """Detect the correct audio device"""
@@ -53,6 +54,12 @@ def kill_all_vlc():
         time.sleep(0.5)
     except:
         pass
+def cancel_current_timer():
+    """Cancel the current timer if it exists"""
+    global current_timer
+    if current_timer:
+        current_timer.cancel()
+        current_timer = None
 
 def play_video_segment(segment_name):
     """Play a specific segment from the merged video"""
@@ -180,7 +187,7 @@ def show_black_screen():
 
 def switch_to_random_video():
     """Switch to a random video - only if no video is currently playing"""
-    global current_segment, black_screen_process, video_playing
+    global current_segment, black_screen_process, video_playing, current_timer
     
     # Don't switch if a video is already playing
     if video_playing:
@@ -209,14 +216,22 @@ def switch_to_random_video():
         play_video_segment(selected_segment['name'])
         
         # Set up timer to return to idle after video ends
-        timer = threading.Timer(selected_segment['duration'], return_to_idle)
-        timer.daemon = True
-        timer.start()
+        # timer = threading.Timer(selected_segment['duration'], return_to_idle)
+        # timer.daemon = True
+        # timer.start()
+        current_timer = threading.Timer(selected_segment['duration'], return_to_idle)
+        current_timer.daemon = True
+        current_timer.start()
 
 def return_to_idle():
     """Return to idle state after video ends"""
-    global current_video_process, current_segment, video_playing
+    global current_video_process, current_segment, video_playing,current_timer
+    # Clear the timer reference since it's completed
+    current_timer = None
     
+    # Only proceed if we're actually playing a video
+    if not video_playing:
+        return
     print("Video finished")
     
     # # Stop current video
@@ -241,7 +256,8 @@ def cleanup_all():
     
     print("Cleaning up all processes...")
     system_running = False
-    
+     # Cancel any running timer
+    cancel_current_timer()
     # Stop current video
     if current_video_process:
         try:
@@ -288,6 +304,8 @@ def check_processes():
         current_video_process = None
         current_segment = None
         video_playing = False
+        # Cancel the timer since the video finished early
+        cancel_current_timer()
         # Only restart black screen if it's not failing
         if not black_screen_failed:
             show_black_screen()
