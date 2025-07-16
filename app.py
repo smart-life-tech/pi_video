@@ -47,7 +47,7 @@ def play_video_segment(segment_name):
     stop_time = start_time + duration
     
     print(f"Playing: {segment_name} from {start_time}s for {duration}s")
-    subprocess.call(["pkill", "-f", "vlc"])
+    #subprocess.call(["pkill", "-f", "vlc"])
     
     subprocess.call([
         "cvlc", "--fullscreen", "--no-osd", "--play-and-exit",
@@ -62,7 +62,7 @@ def play_boot_sound():
         print("Playing boot sound")
         subprocess.Popen([
             "cvlc", "--play-and-exit", "--no-osd",
-            "--aout=alsa", "--alsa-audio-device=hw:0,0",
+            "--aout=alsa", "--alsa-audio-device=hw:1,0",
             BOOT_SOUND_FILE
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     else:
