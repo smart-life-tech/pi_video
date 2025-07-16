@@ -334,7 +334,7 @@ try:
     
     button_last_state = GPIO.HIGH
     last_button_time = 0
-    debounce_delay = 0.5  # Increased debounce delay
+    debounce_delay = 2  # Increased debounce delay
     last_process_check = 0
 
     while system_running:
