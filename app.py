@@ -32,22 +32,19 @@ current_segment = None
 system_running = True
 black_screen_failed = False
 last_black_screen_attempt = 0
+video_playing = False  # Track if video is currently playing
 
 def get_audio_device():
     """Detect the correct audio device"""
     try:
-        # Try to get audio devices
         result = subprocess.run(['aplay', '-l'], capture_output=True, text=True)
         output = result.stdout
-        print(f"Audio devices: {output}")
-        
-        # Look for HDMI or default device
         if 'HDMI' in output:
-            return "hw:1,0"  # Usually HDMI
+            return "hw:1,0"
         else:
-            return "hw:0,0"  # Default device
+            return "hw:0,0"
     except:
-        return "hw:0,0"  # Fallback
+        return "hw:0,0"
 
 def kill_all_vlc():
     """Kill all VLC processes"""
@@ -59,7 +56,7 @@ def kill_all_vlc():
 
 def play_video_segment(segment_name):
     """Play a specific segment from the merged video"""
-    global current_video_process, current_segment
+    global current_video_process, current_segment, video_playing
     
     if not os.path.exists(MERGED_VIDEO):
         print(f"Merged video not found: {MERGED_VIDEO}")
@@ -91,25 +88,39 @@ def play_video_segment(segment_name):
         except:
             current_video_process.kill()
     
-    # Start new video process
+    # Start new video process with no interface elements
     env = os.environ.copy()
     env['DISPLAY'] = ':0'
     
     audio_device = get_audio_device()
     
     current_video_process = subprocess.Popen([
-        "cvlc", "--fullscreen", "--no-osd", "--play-and-exit",
-        "--aout=alsa", f"--alsa-audio-device={audio_device}",
+        "cvlc", 
+        "--fullscreen", 
+        "--no-osd", 
+        "--play-and-exit",
+        "--no-video-title-show",
+        "--no-snapshot-preview",
+        "--no-spu",  # No subtitles
+        "--no-disable-screensaver",
+        "--aout=alsa", 
+        f"--alsa-audio-device={audio_device}",
         f"--start-time={start_time}",
         f"--stop-time={stop_time}",
-        "--intf", "dummy",
+        "--intf", "dummy",  # No interface
+        "--extraintf", "",  # No extra interfaces
+        "--no-interact",  # No interaction
+        "--no-keyboard",  # No keyboard shortcuts
+        "--no-mouse-events",  # No mouse events
         MERGED_VIDEO
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, 
+       stdin=subprocess.DEVNULL)  # Close stdin to prevent input
     
+    video_playing = True
     return current_video_process
 
 def show_black_screen():
-    """Show black screen with better error handling"""
+    """Show black screen with no interface elements"""
     global black_screen_process, black_screen_failed, last_black_screen_attempt
     
     # Prevent rapid restart attempts
@@ -128,56 +139,53 @@ def show_black_screen():
             black_screen_process.kill()
         black_screen_process = None
     
-    # Check if black screen video exists and is valid
     if not os.path.exists(BLACK_SCREEN_VIDEO):
         print(f"Black screen video not found: {BLACK_SCREEN_VIDEO}")
         black_screen_failed = True
         return None
     
-    # Try to get file info
-    try:
-        result = subprocess.run(['file', BLACK_SCREEN_VIDEO], capture_output=True, text=True)
-        print(f"Black screen file info: {result.stdout}")
-    except:
-        pass
-    
     if not black_screen_failed:
-        print("Starting black screen with video file")
+        print("Starting black screen")
         
         env = os.environ.copy()
         env['DISPLAY'] = ':0'
         
-        # Try with more compatible VLC options
         black_screen_process = subprocess.Popen([
             "cvlc", 
             "--fullscreen", 
             "--no-video-title-show", 
             "--no-osd",
+            "--no-snapshot-preview",
+            "--no-spu",
+            "--no-disable-screensaver",
             "--loop", 
             "--no-audio",
             "--intf", "dummy",
-            "--vout", "gl",  # Try OpenGL output
+            "--extraintf", "",
+            "--no-interact",
+            "--no-keyboard",
+            "--no-mouse-events",
             BLACK_SCREEN_VIDEO
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env,
+           stdin=subprocess.DEVNULL)
         
         # Check if it started successfully
-        time.sleep(2)
+        time.sleep(1)
         if black_screen_process.poll() is not None:
-            # Get error output
-            stdout, stderr = black_screen_process.communicate()
-            print(f"Black screen failed. stdout: {stdout.decode()}")
-            print(f"Black screen failed. stderr: {stderr.decode()}")
+            print("Black screen failed")
             black_screen_failed = True
             black_screen_process = None
-    
-    if not black_screen_process:
-        print("No black screen - videos will play directly")
     
     return black_screen_process
 
 def switch_to_random_video():
-    """Switch to a random video"""
-    global current_segment, black_screen_process
+    """Switch to a random video - only if no video is currently playing"""
+    global current_segment, black_screen_process, video_playing
+    
+    # Don't switch if a video is already playing
+    if video_playing:
+        print("Video already playing, ignoring button press")
+        return
     
     # Stop black screen
     if black_screen_process:
@@ -207,7 +215,7 @@ def switch_to_random_video():
 
 def return_to_idle():
     """Return to idle state after video ends"""
-    global current_video_process, current_segment
+    global current_video_process, current_segment, video_playing
     
     print("Video finished")
     
@@ -221,6 +229,7 @@ def return_to_idle():
         current_video_process = None
     
     current_segment = None
+    video_playing = False
     
     # Only show black screen if it's working
     if not black_screen_failed:
@@ -253,63 +262,32 @@ def cleanup_all():
     kill_all_vlc()
 
 def play_boot_sound():
-    """Play boot sound with better audio device detection"""
+    """Play boot sound with aplay (more reliable)"""
     if not os.path.exists(BOOT_SOUND_FILE):
         print(f"Boot sound file not found: {BOOT_SOUND_FILE}")
         return
     
-    # Check file info
-    try:
-        result = subprocess.run(['file', BOOT_SOUND_FILE], capture_output=True, text=True)
-        print(f"Boot sound file info: {result.stdout}")
-    except:
-        pass
-    
     print("Playing boot sound")
     
-    # Try multiple methods to play the sound
-    audio_device = get_audio_device()
-    
-    # Method 1: Try with VLC
     try:
-        env = os.environ.copy()
-        env['DISPLAY'] = ':0'
-        
-        process = subprocess.Popen([
-            "cvlc", "--play-and-exit", "--no-osd",
-            "--aout=alsa", f"--alsa-audio-device={audio_device}",
-            "--intf", "dummy",
-            BOOT_SOUND_FILE
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
-        
-        # Wait a bit and check if it's working
-        time.sleep(1)
-        if process.poll() is None:
-            print("Boot sound playing with VLC")
-            return
-        else:
-            stdout, stderr = process.communicate()
-            print(f"VLC boot sound failed: {stderr.decode()}")
+        subprocess.run(['aplay', BOOT_SOUND_FILE], 
+                      stdout=subprocess.DEVNULL, 
+                      stderr=subprocess.DEVNULL, 
+                      check=True)
+        print("Boot sound played successfully")
     except Exception as e:
-        print(f"VLC boot sound error: {e}")
-    
-    # Method 2: Try with aplay as fallback
-    try:
-        print("Trying boot sound with aplay")
-        subprocess.run(['aplay', BOOT_SOUND_FILE], check=True)
-        print("Boot sound played with aplay")
-    except Exception as e:
-        print(f"aplay boot sound error: {e}")
+        print(f"Boot sound error: {e}")
 
 def check_processes():
     """Check if processes are still running"""
-    global current_video_process, current_segment
+    global current_video_process, current_segment, video_playing
     
     # Check if video process finished
     if current_video_process and current_video_process.poll() is not None:
         print("Video process finished")
         current_video_process = None
         current_segment = None
+        video_playing = False
         # Only restart black screen if it's not failing
         if not black_screen_failed:
             show_black_screen()
@@ -322,9 +300,9 @@ try:
     # Kill any existing VLC processes
     kill_all_vlc()
     
-    # Play boot sound with better error handling
+    # Play boot sound
     play_boot_sound()
-    time.sleep(3)  # Give more time for boot sound
+    time.sleep(2)
     
     # Try to start with black screen
     show_black_screen()
@@ -333,7 +311,7 @@ try:
     
     button_last_state = GPIO.HIGH
     last_button_time = 0
-    debounce_delay = 0.3
+    debounce_delay = 0.5  # Increased debounce delay
     last_process_check = 0
 
     while system_running:
@@ -347,12 +325,13 @@ try:
                 cleanup_all()
                 os.system("sudo shutdown -h now")
 
-        # Handle Video Button with debouncing
+        # Handle Video Button with debouncing - only when no video is playing
         button_current_state = GPIO.input(BUTTON_GPIO)
         
         if (button_current_state == GPIO.LOW and 
             button_last_state == GPIO.HIGH and 
-            current_time - last_button_time > debounce_delay):
+            current_time - last_button_time > debounce_delay and
+            not video_playing):  # Only allow when no video is playing
             
             last_button_time = current_time
             print("Button pressed - switching to random video")
