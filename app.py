@@ -83,7 +83,7 @@ def load_video_segments():
         ]
 # Load video segments from file
 VIDEO_SEGMENTS = load_video_segments()
-
+print(VIDEO_SEGMENTS)
 def get_audio_device():
     """Detect the correct audio device"""
     try:
