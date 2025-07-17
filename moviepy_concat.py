@@ -118,7 +118,7 @@ def verify_and_generate_code(segments):
         
         if segments:
             print("\n" + "="*60)
-            print("COPY THIS INTO YOUR app.py FILE:")
+            print("run app.py FILE:")
             print("="*60)
             
             print("VIDEO_SEGMENTS = [")
@@ -142,7 +142,7 @@ def verify_and_generate_code(segments):
                 for segment in segments:
                     f.write(f"# {segment['name']}: {segment['original_resolution']}\n")
             
-            print("SUCCESS: Timings saved to video_timings.txt")
+            print("SUCCESS: Timings saved to video_timings.txt, now start the app.py")
     else:
         print("ERROR: Could not verify merged video")
 
