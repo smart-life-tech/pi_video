@@ -4,6 +4,7 @@ import random
 import time
 import os
 import threading
+import ast  # For safely evaluating the VIDEO_SEGMENTS from file
 
 # === Configuration ===
 BUTTON_GPIO = 17  # Video trigger button
@@ -12,6 +13,7 @@ VIDEO_FOLDER = "/home/pi-five/pi_video"  # Folder containing video files
 MERGED_VIDEO = "/home/pi-five/pi_video/merged_videos.mp4"  # Single merged video
 BOOT_SOUND_FILE = "/home/pi-five/pi_video/boot_sound.wav"  # Sound to play on boot
 BLACK_SCREEN_VIDEO = "/home/pi-five/pi_video/black.mp4"  # Black screen video file
+VIDEO_TIMINGS_FILE = "/home/pi-five/pi_video/video_timings.txt"  # Video timings file
 
 # Video segments from video_timings.txt
 VIDEO_SEGMENTS = [
@@ -34,6 +36,53 @@ black_screen_failed = False
 last_black_screen_attempt = 0
 video_playing = False  # Track if video is currently playing
 current_timer = None  # Track the current timer
+
+def load_video_segments():
+    """Load video segments from video_timings.txt file"""
+    try:
+        if not os.path.exists(VIDEO_TIMINGS_FILE):
+            print(f"Video timings file not found: {VIDEO_TIMINGS_FILE}")
+            # Fallback to default segments
+            return [
+                {"name": "video1", "start": 0, "duration": 45.9},
+                {"name": "video2", "start": 45.9, "duration": 42.2},
+                {"name": "video3", "start": 88.0, "duration": 22.9},
+            ]
+        
+        with open(VIDEO_TIMINGS_FILE, 'r') as file:
+            content = file.read()
+            
+        # Find the VIDEO_SEGMENTS line and extract the data
+        for line in content.split('\n'):
+            line = line.strip()
+            if line.startswith('VIDEO_SEGMENTS = ['):
+                # Extract the list part
+                start_idx = line.find('[')
+                if start_idx != -1:
+                    # Read the complete list (might span multiple lines)
+                    list_content = content[content.find('['):content.find(']') + 1]
+                    # Safely evaluate the list
+                    segments = ast.literal_eval(list_content)
+                    print(f"Loaded {len(segments)} video segments from {VIDEO_TIMINGS_FILE}")
+                    return segments
+        
+        print("VIDEO_SEGMENTS not found in file, using defaults")
+        return [
+            {"name": "video1", "start": 0, "duration": 45.9},
+            {"name": "video2", "start": 45.9, "duration": 42.2},
+            {"name": "video3", "start": 88.0, "duration": 22.9},
+        ]
+        
+    except Exception as e:
+        print(f"Error loading video segments: {e}")
+        # Fallback to default segments
+        return [
+            {"name": "video1", "start": 0, "duration": 45.9},
+            {"name": "video2", "start": 45.9, "duration": 42.2},
+            {"name": "video3", "start": 88.0, "duration": 22.9},
+        ]
+# Load video segments from file
+VIDEO_SEGMENTS = load_video_segments()
 
 def get_audio_device():
     """Detect the correct audio device"""
@@ -112,14 +161,14 @@ def play_video_segment(segment_name):
         "--no-snapshot-preview",
         "--no-spu",  # No subtitles
         "--no-disable-screensaver",
-        "--aout=alsa", 
-        f"--alsa-audio-device={audio_device}",
+        #"--aout=alsa", 
+        #f"--alsa-audio-device={audio_device}",
         f"--start-time={start_time}",
         f"--stop-time={stop_time}",
         "--intf", "dummy",  # No interface
         "--extraintf", "",  # No extra interfaces
         "--no-interact",  # No interaction
-        "--no-keyboard",  # No keyboard shortcuts
+        #"--no-keyboard",  # No keyboard shortcuts
         "--no-mouse-events",  # No mouse events
         MERGED_VIDEO
     ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, 
