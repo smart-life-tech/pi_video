@@ -2,8 +2,8 @@ from moviepy import VideoFileClip, concatenate_videoclips
 import os
 
 # === Configuration ===
-VIDEO_FOLDER = "c:/Users/USER/Documents/raspberrypi/pi_video/"
-#VIDEO_FOLDER = "/home/pi-five/pi_video"
+#VIDEO_FOLDER = "c:/Users/USER/Documents/raspberrypi/pi_video/"
+VIDEO_FOLDER = "/home/pi-five/pi_video"
 VIDEO_FILES = [
     "video1.mp4",
     "video2.mp4", 
