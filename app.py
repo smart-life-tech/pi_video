@@ -16,11 +16,11 @@ BLACK_SCREEN_VIDEO = "/home/pi-five/pi_video/black.mp4"  # Black screen video fi
 VIDEO_TIMINGS_FILE = "/home/pi-five/pi_video/video_timings.txt"  # Video timings file
 
 # Video segments from video_timings.txt
-VIDEO_SEGMENTS = [
-    {"name": "video1", "start": 0, "duration": 45.9},
-    {"name": "video2", "start": 45.9, "duration": 42.2},
-    {"name": "video3", "start": 88.0, "duration": 22.9},
-]
+# VIDEO_SEGMENTS = [
+#     {"name": "video1", "start": 0, "duration": 45.9},
+#     {"name": "video2", "start": 45.9, "duration": 42.2},
+#     {"name": "video3", "start": 88.0, "duration": 22.9},
+# ]
 
 # === Setup ===
 GPIO.setmode(GPIO.BCM)
