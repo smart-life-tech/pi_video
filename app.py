@@ -109,6 +109,16 @@ def cancel_current_timer():
     if current_timer:
         current_timer.cancel()
         current_timer = None
+        
+def reset_audio_system():
+    """Reset audio system if sound drops out"""
+    try:
+        print("Resetting audio system...")
+        subprocess.call(["sudo", "systemctl", "restart", "alsa-state"], 
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(1)
+    except:
+        pass
 
 def play_video_segment(segment_name):
     """Play a specific segment from the merged video"""
@@ -163,6 +173,8 @@ def play_video_segment(segment_name):
         "--no-disable-screensaver",
         #"--aout=alsa", 
         #f"--alsa-audio-device={audio_device}",
+        "--audio-desync=0",  # Fix audio sync
+        "--no-audio-time-stretch",  # Prevent audio stretching
         f"--start-time={start_time}",
         f"--stop-time={stop_time}",
         "--intf", "dummy",  # No interface
@@ -262,7 +274,9 @@ def switch_to_random_video():
         available_videos = [seg for seg in available_videos if seg["name"] != current_segment["name"]]
     
     if available_videos:
-        selected_segment = random.choice(available_videos)
+        #selected_segment = random.choice(available_videos)
+        random.shuffle(available_videos)
+        selected_segment = available_videos[0] # Select the first one after shuffling
         print(f"Switching to: {selected_segment['name']}")
         
         # Play the selected segment
@@ -415,6 +429,8 @@ try:
         if current_time - last_process_check > 1.0:
             check_processes()
             last_process_check = current_time
+        if int(current_time) % 60 == 0:  # Every 1 minute
+                reset_audio_system()
         
         time.sleep(0.05)
 
